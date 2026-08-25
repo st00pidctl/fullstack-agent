@@ -9,8 +9,10 @@ For a headless validation VM, start with roughly:
 - 4 vCPU
 - 8 GB RAM minimum, 12 GB preferred if preloading local speech models
 - 30 GB disk minimum
-- Ubuntu 24.04 LTS or newer Debian-family Linux
+- Ubuntu 24.04 LTS is the primary tested target
 - network access for package and model downloads
+
+The bootstrap installs a managed Python 3.12 with `uv` for Backtalk, so the voice environment does not depend on the distro's default Python version.
 
 For the complete voice experience, the guest must also see a microphone and audio output device. A normal server VM without audio passthrough can still validate the core, memory layout, state bus, and visualizer.
 
@@ -27,7 +29,7 @@ cd fullstack-agent
 The bootstrap:
 
 1. installs Linux packages needed by the voice stack
-2. installs `uv`
+2. installs `uv` and a managed Python 3.12
 3. installs Codex CLI when selected
 4. clones the universal Backtalk fork
 5. clones upstream ai-memory-vault, ai-visualizer, and Barehands
@@ -36,15 +38,17 @@ The bootstrap:
 8. writes component configuration and state-bus paths
 9. installs Backtalk and preloads local speech models
 
-The script is safe to re-run. Existing Git repositories are updated instead of replaced, and an existing canonical `AGENTS.md` is not overwritten.
+The script is safe to re-run. Existing Git repositories are updated instead of replaced, an existing canonical `AGENTS.md` is not overwritten, and the bootstrap does not update the script underneath itself while it is running.
 
 ## Authenticate the selected core
 
-For Codex:
+For a headless Codex VM, use device authentication:
 
 ```bash
-codex login
+codex login --device-auth
 ```
+
+For a VM with a usable desktop and browser, plain `codex login` is also fine.
 
 Then verify the VM:
 
@@ -78,7 +82,7 @@ Then open `http://127.0.0.1:8790/` locally while the visualizer is running.
 
 ### Codex
 
-This is the primary fresh-VM validation path. The adapter uses `codex exec --json`, captures Codex thread IDs, and resumes them for later voice turns.
+This is the primary fresh VM validation path. The adapter uses `codex exec --json`, captures Codex thread IDs, and resumes them for later voice turns.
 
 ### Claude
 
@@ -88,7 +92,7 @@ Run bootstrap with:
 ./bootstrap-vm.sh --provider claude
 ```
 
-Claude remains an adapter, not the owner of identity or memory. Authentication/install steps remain provider-specific.
+Claude remains an adapter, not the owner of identity or memory. Authentication and install steps remain provider-specific.
 
 ### Generic CLI
 
