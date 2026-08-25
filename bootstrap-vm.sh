@@ -122,16 +122,21 @@ AGENTS.md is the portable source of truth for identity and operating rules. Prov
 ## Operating model
 
 - Work from this directory unless the user explicitly selects another workspace.
-- Use the memory directory for durable cross-session notes that are useful later.
 - Do not make a provider, model vendor, or harness part of the agent's identity.
 - The reasoning core is replaceable. Preserve shell-owned memory, voice, UI, and configuration when the core changes.
 - Prefer reversible actions and inspect before mutating.
+
+## Memory protocol
+
+At the start of a new session, read `memory/VAULT-INDEX.md`, then `memory/Active Priorities.md`. Retrieve other memory only when it is relevant to the task.
+
+Persist durable decisions, constraints, lessons, and project state to the appropriate file under `memory/`. Update an existing note before creating a thin new one when practical. Never move canonical memory into a provider-specific directory, and never store secrets in the memory vault.
 
 ## Components
 
 - fullstack-agent: shell, lifecycle, bootstrap, and integration
 - backtalk: voice, speech recognition, TTS, and pluggable reasoning core adapter
-- ai-memory-vault: optional structured memory tooling
+- ai-memory-vault: upstream reference and optional structured-memory tooling
 - ai-visualizer: local face and state viewer
 - barehands: optional camera-driven visual workspace
 - memory: portable shell-owned durable notes
@@ -144,12 +149,28 @@ Read and follow ./AGENTS.md. AGENTS.md is canonical. This file exists only for C
 EOF
 fi
 
-mkdir -p "$ROOT/memory"
+echo "== provisioning portable memory =="
+mkdir -p \
+  "$ROOT/memory/00 - Inbox" \
+  "$ROOT/memory/01 - Daily Notes" \
+  "$ROOT/memory/90 - Archive" \
+  "$ROOT/memory/99 - Resources"
+MEMORY_TEMPLATES="$ROOT/fullstack-agent/templates/portable-memory"
+if [ ! -f "$ROOT/memory/VAULT-INDEX.md" ]; then
+  cp "$MEMORY_TEMPLATES/VAULT-INDEX.md" "$ROOT/memory/VAULT-INDEX.md"
+fi
+if [ ! -f "$ROOT/memory/Active Priorities.md" ]; then
+  cp "$MEMORY_TEMPLATES/Active Priorities.md" "$ROOT/memory/Active Priorities.md"
+fi
+if [ ! -f "$ROOT/memory/01 - Daily Notes/Daily Note Template.md" ]; then
+  cp "$MEMORY_TEMPLATES/Daily Note Template.md" \
+    "$ROOT/memory/01 - Daily Notes/Daily Note Template.md"
+fi
 if [ ! -f "$ROOT/memory/README.md" ]; then
   cat > "$ROOT/memory/README.md" <<'EOF'
 # Portable memory
 
-This directory belongs to the agent shell, not to any model provider. Store durable Markdown notes here when they should survive core changes.
+This directory belongs to the agent shell, not to any model provider. `VAULT-INDEX.md` is the map and memory policy. The directory is ordinary Markdown and can also be opened as an Obsidian vault if desired.
 EOF
 fi
 
@@ -177,6 +198,7 @@ cfg.update({
     "resume_last_session": True,
     "signals_dir": str(root / "backtalk"),
     "barehands_state_dir": str(root / "barehands" / "state"),
+    "extra_dirs": [str(root / "memory")],
     "greeting": f"Hello. {name} is online. Hold {{ptt_key}} and talk to me.",
 })
 core = dict(cfg.get("core") or {})
@@ -213,6 +235,7 @@ shell_cfg.write_text(json.dumps({
     "version": 2,
     "agent_dir": str(root),
     "identity_file": "AGENTS.md",
+    "memory_dir": str(root / "memory"),
     "core": {"provider": provider},
     "permissions": {"mode": "ask"},
     "components": {
@@ -257,6 +280,7 @@ printf '\n== bootstrap complete ==\n'
 printf 'agent home: %s\n' "$ROOT"
 printf 'provider:   %s\n' "$PROVIDER"
 printf 'identity:   %s/AGENTS.md\n' "$ROOT"
+printf 'memory:     %s/memory/VAULT-INDEX.md\n' "$ROOT"
 printf '\nNext:\n'
 if [ "$PROVIDER" = "codex" ]; then
   echo "  1. On a headless VM, run: codex login --device-auth"
