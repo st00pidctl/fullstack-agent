@@ -31,6 +31,7 @@ done
 
 ROOT="${ROOT/#\~/$HOME}"
 PY="$ROOT/backtalk/.venv/bin/python"
+ENDPOINT_MODULE="backtalk.endpoint_headless"
 PIDFILE="$ROOT/.remote-endpoint.pid"
 LOGDIR="$ROOT/logs"
 LOGFILE="$LOGDIR/remote-endpoint.log"
@@ -81,7 +82,7 @@ case "$ACTION" in
       echo "== starting remote endpoint on 127.0.0.1:$PORT =="
       (
         cd "$ROOT/backtalk"
-        nohup "$PY" -m backtalk.endpoint_server --host 127.0.0.1 --port "$PORT" \
+        nohup "$PY" -m "$ENDPOINT_MODULE" --host 127.0.0.1 --port "$PORT" \
           >>"$LOGFILE" 2>&1 &
         echo $! > "$PIDFILE"
       )
@@ -97,7 +98,7 @@ case "$ACTION" in
   foreground)
     require_runtime
     cd "$ROOT/backtalk"
-    exec "$PY" -m backtalk.endpoint_server --host 127.0.0.1 --port "$PORT"
+    exec "$PY" -m "$ENDPOINT_MODULE" --host 127.0.0.1 --port "$PORT"
     ;;
   stop)
     if pid="$(running_pid)"; then
@@ -142,7 +143,7 @@ After=network-online.target tailscaled.service
 [Service]
 Type=simple
 WorkingDirectory=$ROOT/backtalk
-ExecStart=$PY -m backtalk.endpoint_server --host 127.0.0.1 --port $PORT
+ExecStart=$PY -m $ENDPOINT_MODULE --host 127.0.0.1 --port $PORT
 Restart=on-failure
 RestartSec=3
 
