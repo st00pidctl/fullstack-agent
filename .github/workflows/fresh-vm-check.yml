@@ -2,7 +2,7 @@ name: fresh-vm-check
 
 on:
   push:
-    branches: [universal-core-architecture]
+    branches: [main, identity-memory-v1.1]
   pull_request:
 
 jobs:
@@ -11,15 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh endpoint.sh cpu-preflight.sh start.sh update.sh
+        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh verify-memory.sh endpoint.sh cpu-preflight.sh start.sh update.sh
       - name: Operator scripts executable
         run: |
           test -x repair-vm.sh
           test -x cpu-preflight.sh
           test -x verify-endpoint.sh
+          test -x verify-memory.sh
           test -x endpoint.sh
+          test -x agentctl.py
       - name: Python syntax
-        run: python -m py_compile corectl.py
+        run: python -m py_compile corectl.py agentctl.py
       - name: Validate shell config example
         run: python -m json.tool config/fullstack-agent.example.json >/dev/null
       - name: Validate portable memory templates
@@ -27,8 +29,18 @@ jobs:
           test -s templates/portable-memory/VAULT-INDEX.md
           test -s 'templates/portable-memory/Active Priorities.md'
           test -s 'templates/portable-memory/Daily Note Template.md'
+      - name: Validate portable identity templates
+        run: |
+          test -s templates/identity/IDENTITY.md
+          test -s templates/identity/OPERATING_PRINCIPLES.md
+          grep -q '^Name:' templates/identity/IDENTITY.md
       - name: Validate endpoint operator docs
         run: |
           test -s REMOTE_ENDPOINT.md
           grep -q 'REMOTE_ENDPOINT_VERIFIED' verify-endpoint.sh
           grep -q 'tailscale serve --bg' endpoint.sh
+      - name: Validate durability semantics
+        run: |
+          grep -q 'MEMORY_DURABILITY_VERIFIED' verify-memory.sh
+          grep -q 'identity/IDENTITY.md' repair-vm.sh
+          grep -q 'git -C "$ROOT/backtalk" fetch origin main' repair-vm.sh
