@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Universal Fullstack Agent fresh-VM bootstrap
+# Universal Fullstack Agent fresh VM bootstrap
 # SPDX-License-Identifier: AGPL-3.0-or-later
 set -euo pipefail
 
@@ -8,6 +8,7 @@ PROVIDER="codex"
 AGENT_NAME="Assistant"
 INSTALL_MODELS=1
 INSTALL_SYSTEM=1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'EOF'
@@ -52,7 +53,7 @@ if [ "$INSTALL_SYSTEM" -eq 1 ]; then
       python3 python3-venv python3-pip python3-dev build-essential \
       ffmpeg espeak-ng libportaudio2 portaudio19-dev libsndfile1
   else
-    echo "No apt-get detected. Install git, curl, Python 3.11+, ffmpeg, espeak-ng, and PortAudio manually."
+    echo "No apt-get detected. Install git, curl, Python 3, ffmpeg, espeak-ng, and PortAudio manually."
   fi
 fi
 
@@ -63,6 +64,9 @@ if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 fi
+
+echo "== ensuring managed Python 3.12 for Backtalk =="
+uv python install 3.12
 
 sync_repo() {
   local url="$1" dir="$2" branch="$3"
@@ -80,10 +84,16 @@ sync_repo() {
   fi
 }
 
-# The fullstack-agent checkout running this script can live anywhere. The
-# working agent home always owns sibling component directories under ROOT.
-sync_repo "https://github.com/st00pidctl/fullstack-agent.git" \
-  "$ROOT/fullstack-agent" "universal-core-architecture"
+# Avoid updating the script underneath itself. If bootstrap is being run from
+# the intended checkout, use it as-is. If it was launched from another clone,
+# create or update the working checkout under ROOT.
+if [ "$SCRIPT_DIR" = "$ROOT/fullstack-agent" ]; then
+  echo "== fullstack-agent: using current checkout =="
+else
+  sync_repo "https://github.com/st00pidctl/fullstack-agent.git" \
+    "$ROOT/fullstack-agent" "universal-core-architecture"
+fi
+
 sync_repo "https://github.com/st00pidctl/backtalk.git" \
   "$ROOT/backtalk" "universal-core-architecture"
 sync_repo "https://github.com/jaredrhod/ai-memory-vault.git" \
@@ -175,8 +185,6 @@ if provider == "codex":
     core.setdefault("binary", "codex")
     core.setdefault("model", "")
     core.setdefault("extra_args", [])
-    # Prevent Claude-specific model names in the legacy voice-console fields
-    # from accidentally being passed into another provider.
     cfg["model"] = ""
     cfg["deep_model"] = ""
 elif provider == "generic-cli":
@@ -226,8 +234,19 @@ EOF
   chmod +x "$ROOT/core-wrapper"
 fi
 
-echo "== installing Backtalk Python environment =="
+echo "== preparing Backtalk Python 3.12 environment =="
 cd "$ROOT/backtalk"
+if [ -x .venv/bin/python ]; then
+  if ! .venv/bin/python -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 13)' >/dev/null 2>&1; then
+    echo "Existing backtalk/.venv uses an unsupported Python version." >&2
+    echo "Move that environment aside and rerun bootstrap; no files were deleted automatically." >&2
+    exit 1
+  fi
+else
+  uv venv --python 3.12 .venv
+fi
+export UV_PYTHON=3.12
+
 if [ "$INSTALL_MODELS" -eq 1 ]; then
   ./install.sh
 else
@@ -240,12 +259,9 @@ printf 'provider:   %s\n' "$PROVIDER"
 printf 'identity:   %s/AGENTS.md\n' "$ROOT"
 printf '\nNext:\n'
 if [ "$PROVIDER" = "codex" ]; then
-  if codex login status >/dev/null 2>&1; then
-    echo "  Codex login already looks usable."
-  else
-    echo "  1. Run: codex login"
-    echo "  2. Re-run the verifier after login."
-  fi
+  echo "  1. On a headless VM, run: codex login --device-auth"
+  echo "     On a desktop VM, plain codex login is also fine."
+  echo "  2. Run the verifier after authentication."
 fi
 printf '  Run: %s/fullstack-agent/verify-vm.sh --root %q\n' "$ROOT" "$ROOT"
 printf '  Then: cd %q && ./fullstack-agent/start.sh\n' "$ROOT"
