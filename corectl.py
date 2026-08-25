@@ -29,13 +29,17 @@ def root_from_args(raw: str) -> Path:
     return Path(raw).expanduser().resolve()
 
 
+def config_paths(root: Path) -> tuple[Path, Path]:
+    return root / "fullstack-agent.json", root / "backtalk" / "backtalk.json"
+
+
 def status(root: Path) -> int:
-    shell_path = root / "fullstack-agent.json"
-    backtalk_path = root / "backtalk" / "backtalk.json"
+    shell_path, backtalk_path = config_paths(root)
     shell = load_json(shell_path)
     backtalk = load_json(backtalk_path)
     shell_provider = shell.get("core", {}).get("provider")
-    voice_provider = backtalk.get("core", {}).get("provider")
+    voice_core = backtalk.get("core", {})
+    voice_provider = voice_core.get("provider")
     print(f"agent home: {root}")
     print(f"shell core: {shell_provider or '(unset)'}")
     print(f"voice core: {voice_provider or '(unset)'}")
@@ -43,24 +47,20 @@ def status(root: Path) -> int:
         print("status: MISMATCH")
         return 1
     print("status: aligned")
-    if voice_provider == "codex":
-        core = backtalk.get("core", {})
-        print(f"binary: {core.get('binary') or 'codex'}")
-        print(f"model: {core.get('model') or '(Codex default)'}")
+    if voice_core.get("adapter"):
+        print(f"adapter: {voice_core['adapter']}")
+    elif voice_provider == "codex":
+        print(f"binary: {voice_core.get('binary') or 'codex'}")
+        print(f"model: {voice_core.get('model') or '(Codex default)'}")
     elif voice_provider == "generic-cli":
-        command = backtalk.get("core", {}).get("command") or []
+        command = voice_core.get("command") or []
         print("command: " + (" ".join(map(str, command)) if command else "(unset)"))
     return 0
 
 
-def switch(root: Path, provider: str, command: list[str] | None) -> int:
-    if provider not in BUILT_INS:
-        raise SystemExit(
-            f"Unknown built-in core {provider!r}. Use generic-cli for an arbitrary runtime."
-        )
-
-    shell_path = root / "fullstack-agent.json"
-    backtalk_path = root / "backtalk" / "backtalk.json"
+def save_provider(root: Path, provider: str, backtalk_core: dict,
+                  clear_provider_models: bool) -> int:
+    shell_path, backtalk_path = config_paths(root)
     shell = load_json(shell_path)
     backtalk = load_json(backtalk_path)
 
@@ -68,13 +68,35 @@ def switch(root: Path, provider: str, command: list[str] | None) -> int:
     shell_core["provider"] = provider
     shell["core"] = shell_core
 
-    old_core = dict(backtalk.get("core") or {})
-    if provider == "claude":
-        new_core = {"provider": "claude"}
-        # Removing provider-specific overrides lets Backtalk's upstream
-        # defaults choose the current Claude models.
+    if clear_provider_models:
+        backtalk["model"] = ""
+        backtalk["deep_model"] = ""
+    else:
         backtalk.pop("model", None)
         backtalk.pop("deep_model", None)
+
+    backtalk["core"] = backtalk_core
+    write_json(shell_path, shell)
+    write_json(backtalk_path, backtalk)
+
+    print(f"core switched to: {provider}")
+    print("identity unchanged: AGENTS.md")
+    print("memory unchanged: memory/")
+    print("provider sessions remain isolated in provider-specific state files")
+    print(f"verify: {root}/fullstack-agent/verify-vm.sh --root {shlex.quote(str(root))}")
+    return 0
+
+
+def switch_builtin(root: Path, provider: str, command: list[str] | None) -> int:
+    if provider not in BUILT_INS:
+        raise SystemExit(f"Unknown built-in core {provider!r}")
+    _, backtalk_path = config_paths(root)
+    backtalk = load_json(backtalk_path)
+    old_core = dict(backtalk.get("core") or {})
+
+    if provider == "claude":
+        new_core = {"provider": "claude"}
+        clear_models = False
     elif provider == "codex":
         new_core = {
             "provider": "codex",
@@ -82,9 +104,7 @@ def switch(root: Path, provider: str, command: list[str] | None) -> int:
             "model": old_core.get("model") if old_core.get("provider") == "codex" else "",
             "extra_args": old_core.get("extra_args") if old_core.get("provider") == "codex" else [],
         }
-        # Do not leak Claude model IDs into Codex voice-console requests.
-        backtalk["model"] = ""
-        backtalk["deep_model"] = ""
+        clear_models = True
     else:
         if command:
             argv = command
@@ -97,37 +117,52 @@ def switch(root: Path, provider: str, command: list[str] | None) -> int:
             "command": argv,
             "timeout_seconds": int(old_core.get("timeout_seconds") or 300),
         }
-        backtalk["model"] = ""
-        backtalk["deep_model"] = ""
+        clear_models = True
 
-    backtalk["core"] = new_core
-    write_json(shell_path, shell)
-    write_json(backtalk_path, backtalk)
+    return save_provider(root, provider, new_core, clear_models)
 
-    print(f"core switched to: {provider}")
-    print("identity unchanged: AGENTS.md")
-    print("memory unchanged: memory/")
-    print("provider sessions remain isolated in their provider-specific state files")
-    print(f"verify: {root}/fullstack-agent/verify-vm.sh --root {shlex.quote(str(root))}")
-    return 0
+
+def switch_custom(root: Path, provider: str, adapter: str) -> int:
+    if ":" not in adapter:
+        raise SystemExit(
+            "adapter must be '/path/to/file.py:ClassName' or 'python.module:ClassName'"
+        )
+    source = adapter.rsplit(":", 1)[0]
+    if source.endswith(".py"):
+        path = Path(source).expanduser()
+        if not path.is_file():
+            raise SystemExit(f"adapter file not found: {path}")
+        adapter = f"{path.resolve()}:{adapter.rsplit(':', 1)[1]}"
+    return save_provider(
+        root,
+        provider,
+        {"provider": provider, "adapter": adapter},
+        clear_provider_models=True,
+    )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Inspect or switch the replaceable Fullstack Agent reasoning core."
     )
-    parser.add_argument(
-        "--root", default="~/universal-agent", help="agent home directory"
-    )
+    parser.add_argument("--root", default="~/universal-agent", help="agent home directory")
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("list", help="list built-in core adapters")
     sub.add_parser("status", help="show configured shell and voice core")
-    use = sub.add_parser("use", help="switch to a core without changing shell state")
+
+    use = sub.add_parser("use", help="switch to a built-in core")
     use.add_argument("provider", choices=BUILT_INS)
     use.add_argument(
         "--command",
         nargs=argparse.REMAINDER,
         help="generic-cli wrapper argv; everything after --command is preserved",
+    )
+
+    custom = sub.add_parser("use-custom", help="select a drop-in Python core adapter")
+    custom.add_argument("provider", help="local name for this runtime")
+    custom.add_argument(
+        "adapter",
+        help="/path/to/file.py:ClassName or python.module:ClassName",
     )
 
     args = parser.parse_args()
@@ -138,11 +173,14 @@ def main() -> int:
         print("  claude       Claude Agent SDK")
         print("  codex        OpenAI Codex CLI")
         print("  generic-cli  any wrapper that reads stdin and writes assistant text to stdout")
+        print("Custom native adapters: corectl.py use-custom NAME FILE.py:ClassName")
         return 0
     if args.action == "status":
         return status(root)
     if args.action == "use":
-        return switch(root, args.provider, args.command)
+        return switch_builtin(root, args.provider, args.command)
+    if args.action == "use-custom":
+        return switch_custom(root, args.provider, args.adapter)
     return 2
 
 
