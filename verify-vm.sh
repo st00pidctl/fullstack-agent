@@ -10,9 +10,10 @@ usage() {
   cat <<'EOF'
 Usage: ./verify-vm.sh [--root PATH] [--skip-core]
 
-Checks repository layout, JSON config, Backtalk core selection, a headless
-agent turn, and the visualizer state endpoint. The headless core test requires
-provider authentication but does not require audio hardware.
+Checks repository layout, portable memory, cross-component configuration,
+Backtalk core selection, a headless agent turn, and the visualizer state
+endpoint. The headless core test requires provider authentication but does not
+require audio hardware.
 EOF
 }
 
@@ -31,34 +32,80 @@ pass() { printf 'PASS  %s\n' "$1"; }
 warn() { printf 'WARN  %s\n' "$1"; }
 bad() { printf 'FAIL  %s\n' "$1"; fail=1; }
 
-for d in fullstack-agent backtalk ai-memory-vault ai-visualizer barehands memory; do
+for d in \
+  fullstack-agent \
+  backtalk \
+  ai-memory-vault \
+  ai-visualizer \
+  barehands \
+  memory \
+  "memory/00 - Inbox" \
+  "memory/01 - Daily Notes" \
+  "memory/90 - Archive" \
+  "memory/99 - Resources"; do
   if [ -d "$ROOT/$d" ]; then pass "$d present"; else bad "$d missing"; fi
 done
 
-for f in AGENTS.md CLAUDE.md fullstack-agent.json backtalk/backtalk.json ai-visualizer/ai-visualizer.json; do
+for f in \
+  AGENTS.md \
+  CLAUDE.md \
+  fullstack-agent.json \
+  backtalk/backtalk.json \
+  ai-visualizer/ai-visualizer.json \
+  memory/VAULT-INDEX.md \
+  "memory/Active Priorities.md" \
+  "memory/01 - Daily Notes/Daily Note Template.md"; do
   if [ -f "$ROOT/$f" ]; then pass "$f present"; else bad "$f missing"; fi
 done
 
 if python3 - "$ROOT" <<'PY'
-import json, sys
+import json
+import sys
 from pathlib import Path
-root = Path(sys.argv[1])
-for rel in (
-    "fullstack-agent.json",
-    "backtalk/backtalk.json",
-    "ai-visualizer/ai-visualizer.json",
-):
-    json.loads((root / rel).read_text())
-print("JSON_OK")
+
+root = Path(sys.argv[1]).expanduser().resolve()
+shell = json.loads((root / "fullstack-agent.json").read_text())
+backtalk = json.loads((root / "backtalk/backtalk.json").read_text())
+visualizer = json.loads((root / "ai-visualizer/ai-visualizer.json").read_text())
+
+provider = shell.get("core", {}).get("provider")
+assert provider, "fullstack-agent.json has no core.provider"
+assert backtalk.get("core", {}).get("provider") == provider, \
+    "shell and Backtalk provider differ"
+assert Path(shell["agent_dir"]).resolve() == root, "shell agent_dir is wrong"
+assert shell.get("identity_file") == "AGENTS.md", "AGENTS.md is not canonical"
+assert Path(shell["memory_dir"]).resolve() == root / "memory", \
+    "shell memory_dir is wrong"
+assert Path(backtalk["agent_dir"]).resolve() == root, "Backtalk agent_dir is wrong"
+assert Path(backtalk["signals_dir"]).resolve() == root / "backtalk", \
+    "Backtalk signals_dir is wrong"
+assert str(root / "memory") in backtalk.get("extra_dirs", []), \
+    "portable memory is not exposed to Backtalk core"
+assert Path(visualizer["bus_dir"]).resolve() == root / "backtalk", \
+    "visualizer bus_dir is wrong"
+print(f"WIRING_OK provider={provider}")
 PY
 then
-  pass "configuration JSON parses"
+  pass "configuration and cross-component wiring"
 else
-  bad "configuration JSON invalid"
+  bad "configuration or cross-component wiring invalid"
+fi
+
+if grep -q 'memory/VAULT-INDEX.md' "$ROOT/AGENTS.md" && \
+   grep -q 'memory/Active Priorities.md' "$ROOT/AGENTS.md"; then
+  pass "AGENTS.md contains portable memory startup protocol"
+else
+  bad "AGENTS.md does not contain portable memory startup protocol"
 fi
 
 if [ -x "$ROOT/backtalk/.venv/bin/python" ]; then
   pass "Backtalk virtual environment present"
+  if "$ROOT/backtalk/.venv/bin/python" -c \
+      'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 13)' >/dev/null 2>&1; then
+    pass "Backtalk Python version supported"
+  else
+    bad "Backtalk Python version unsupported"
+  fi
 else
   bad "Backtalk virtual environment missing"
 fi
@@ -113,7 +160,7 @@ trap - EXIT
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then
-  echo "VERIFIED: software stack and selected core are ready."
+  echo "VERIFIED: software stack, memory wiring, and selected core are ready."
   echo "Full voice still requires microphone and speaker devices inside the VM."
   exit 0
 else
