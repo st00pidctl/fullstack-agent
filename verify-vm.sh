@@ -110,10 +110,22 @@ else
   bad "Backtalk virtual environment missing"
 fi
 
-if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.endpoint_server --self-test); then
-  pass "remote endpoint server and PWA assets ready"
+CPU_OK=1
+if bash "$ROOT/fullstack-agent/cpu-preflight.sh"; then
+  pass "VM CPU feature baseline supported"
 else
-  bad "remote endpoint self-test failed"
+  bad "VM CPU feature baseline too old for current voice dependencies"
+  CPU_OK=0
+fi
+
+if [ "$CPU_OK" -eq 1 ]; then
+  if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.endpoint_server --self-test); then
+    pass "remote endpoint server and PWA assets ready"
+  else
+    bad "remote endpoint self-test failed"
+  fi
+else
+  warn "remote endpoint self-test skipped until VM CPU model is corrected"
 fi
 
 if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.core_probe --check); then
