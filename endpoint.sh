@@ -3,6 +3,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 set -euo pipefail
 
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+  NORMAL_USER="${SUDO_USER:-${USER:-user}}"
+  echo "Do not run endpoint.sh with sudo." >&2
+  echo "The agent must stay owned by the normal login user; sudo changes HOME and runtime paths." >&2
+  echo "For Tailscale Serve permission, run this once instead:" >&2
+  echo "  sudo tailscale set --operator=$NORMAL_USER" >&2
+  echo "Then rerun endpoint.sh as $NORMAL_USER without sudo." >&2
+  exit 2
+fi
+
 ROOT="$HOME/universal-agent"
 PORT=8787
 TAILSCALE=0
@@ -68,7 +78,17 @@ configure_tailscale() {
     return 1
   fi
   echo "== configuring private HTTPS through Tailscale Serve =="
-  tailscale serve --bg "$PORT"
+  local output
+  if ! output="$(tailscale serve --bg "$PORT" 2>&1)"; then
+    printf '%s\n' "$output" >&2
+    echo >&2
+    echo "Do not sudo endpoint.sh." >&2
+    echo "Grant this login permission to manage Tailscale once:" >&2
+    echo "  sudo tailscale set --operator=$USER" >&2
+    echo "Then rerun: ./fullstack-agent/endpoint.sh start --tailscale" >&2
+    return 1
+  fi
+  [ -z "$output" ] || printf '%s\n' "$output"
   echo
   tailscale serve status || true
 }
