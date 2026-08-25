@@ -18,19 +18,19 @@ AGENTS.md + shell-owned memory
 
 `AGENTS.md` is canonical. Provider-specific files such as `CLAUDE.md` are compatibility shims only.
 
-## Implemented cores
+## Core integration lanes
 
-The matching `st00pidctl/backtalk` universal branch now provides:
+The matching `st00pidctl/backtalk` universal branch supports three ways to attach a core:
 
-- Claude Code adapter
-- OpenAI Codex CLI adapter with JSONL events and resumable thread IDs
-- generic CLI adapter for arbitrary wrappers and future harnesses
+1. Built-in adapters for Claude Code and OpenAI Codex CLI.
+2. `generic-cli` for any wrapper that reads prompts from stdin and writes assistant text to stdout.
+3. A native drop-in Python adapter selected by file path or import path, with no Backtalk registry edit required.
 
-The generic adapter is the escape hatch that keeps the architecture open. A new runtime can be wrapped without teaching the rest of the stack what vendor or harness it is.
+This means a future runtime can join at the simplest level first, then gain a native adapter later without changing the shell.
 
 ## Fresh VM quickstart
 
-The current clean-room validation path targets Ubuntu or Debian and defaults to Codex:
+Ubuntu 24.04 LTS is the primary clean-room target. The bootstrap uses a managed Python 3.12 for Backtalk and defaults to Codex as the first non-Claude validation core.
 
 ```bash
 mkdir -p ~/universal-agent
@@ -40,10 +40,10 @@ cd fullstack-agent
 ./bootstrap-vm.sh --provider codex --name Assistant
 ```
 
-Authenticate the core:
+On a headless VM, authenticate Codex with:
 
 ```bash
-codex login
+codex login --device-auth
 ```
 
 Then run the microphone-free verifier:
@@ -53,16 +53,63 @@ cd ~/universal-agent
 ./fullstack-agent/verify-vm.sh
 ```
 
-See `FRESH_VM.md` for VM sizing, headless access, audio requirements, and success criteria.
+The verifier checks repository layout, portable memory, JSON and cross-component wiring, Backtalk's Python version, selected-core startup, one real headless agent turn, and the visualizer state endpoint.
+
+See `FRESH_VM.md` for VM sizing, audio requirements, SSH tunneling, and success criteria.
+
+## Portable memory
+
+The bootstrap provisions a provider-neutral Markdown vault under `memory/`:
+
+```text
+memory/
+  VAULT-INDEX.md
+  Active Priorities.md
+  00 - Inbox/
+  01 - Daily Notes/
+    Daily Note Template.md
+  90 - Archive/
+  99 - Resources/
+```
+
+`AGENTS.md` tells every core to read the vault index and active priorities at session start, then retrieve other notes only when relevant. The memory directory can also be opened directly as an Obsidian vault, but Obsidian is not required for the agent to use it.
+
+The upstream `ai-memory-vault` repository is still cloned as reference and optional tooling, but its Claude-era bootstrap is no longer allowed to own canonical identity or memory.
+
+## Switch cores
+
+`corectl.py` changes the reasoning runtime while leaving identity and memory alone.
+
+```bash
+cd ~/universal-agent
+./fullstack-agent/corectl.py status
+./fullstack-agent/corectl.py list
+./fullstack-agent/corectl.py use codex
+./fullstack-agent/corectl.py use claude
+```
+
+Use any command-line harness through a wrapper:
+
+```bash
+./fullstack-agent/corectl.py use generic-cli --command /path/to/my-wrapper
+```
+
+Use a native Python drop-in adapter:
+
+```bash
+./fullstack-agent/corectl.py use-custom my-runtime /path/to/my_core.py:MyRuntimeBrain
+```
+
+Backtalk includes `examples/custom_core.py` as the reference contract.
 
 ## Components
 
 - **Shell and lifecycle:** this repository
 - **Voice and core adapter layer:** `st00pidctl/backtalk`, branch `universal-core-architecture`
-- **Memory tooling:** Jared Rhodenizer's `ai-memory-vault`, kept optional because its setup still carries Claude-era assumptions
+- **Portable memory:** shell-owned `memory/`
+- **Memory reference/tooling:** Jared Rhodenizer's `ai-memory-vault`
 - **Face:** Jared Rhodenizer's `ai-visualizer`, core-neutral
 - **Hands:** Jared Rhodenizer's `barehands`, core-neutral
-- **Portable memory:** shell-owned `memory/` directory that survives provider swaps
 
 ## Core contract
 
@@ -90,6 +137,7 @@ Each adapter maps those semantics to the safest compatible provider behavior and
 - Codex does not currently expose the same spoken per-tool approval callback used by the Claude SDK adapter. The Codex path remains sandboxed and uses its automatic review lane.
 - Some voice-console operations are provider-specific. Capability negotiation is authoritative.
 - Full voice inside a VM requires guest-visible microphone and speaker devices. A headless VM can still validate the core, memory layout, state bus, and visualizer.
+- The automated checks validate syntax, configuration shape, and the drop-in loader. The authenticated clean-VM runtime test is intentionally performed by `verify-vm.sh` after you log the selected provider in on the VM.
 
 ## Upstream compatibility
 
