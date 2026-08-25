@@ -25,15 +25,30 @@ for repo in fullstack-agent backtalk; do
   fi
 done
 
-echo "== updating universal branches =="
-git -C "$ROOT/backtalk" fetch origin universal-core-architecture
-git -C "$ROOT/backtalk" checkout universal-core-architecture
-git -C "$ROOT/backtalk" pull --ff-only origin universal-core-architecture
+echo "== updating stable Backtalk main =="
+git -C "$ROOT/backtalk" fetch origin main
+git -C "$ROOT/backtalk" checkout main
+git -C "$ROOT/backtalk" pull --ff-only origin main
 
 AGENTS="$ROOT/AGENTS.md"
 if [ ! -f "$AGENTS" ]; then
-  echo "Missing canonical identity file: $AGENTS" >&2
+  echo "Missing canonical instruction file: $AGENTS" >&2
   exit 1
+fi
+
+if grep -q 'identity/IDENTITY.md' "$AGENTS" && \
+   grep -q 'identity/OPERATING_PRINCIPLES.md' "$AGENTS"; then
+  echo "== portable identity protocol already present =="
+else
+  echo "== adding portable identity protocol to AGENTS.md =="
+  cat >> "$AGENTS" <<'EOF'
+
+## Portable identity protocol
+
+At the start of a new provider session, read `identity/IDENTITY.md` and `identity/OPERATING_PRINCIPLES.md` before treating provider session context as authoritative. Identity is shell-owned and must not be inferred from the active model, provider, host, or endpoint.
+
+Provider session IDs are disposable acceleration state. If provider-session resume fails, recover from shell-owned identity and portable memory instead of treating the agent as a new identity.
+EOF
 fi
 
 if grep -q 'memory/VAULT-INDEX.md' "$AGENTS" && \
@@ -56,8 +71,43 @@ if [ ! -d "$ROOT/memory" ]; then
   exit 1
 fi
 
-# Ensure Backtalk can see shell-owned portable memory without replacing any
-# other user configuration.
+IDENTITY_DIR="$ROOT/identity"
+IDENTITY_TEMPLATES="$ROOT/fullstack-agent/templates/identity"
+mkdir -p "$IDENTITY_DIR"
+
+CURRENT_NAME="$(python3 - "$ROOT" <<'PY'
+import json
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+try:
+    cfg = json.loads((root / 'backtalk' / 'backtalk.json').read_text())
+except Exception:
+    cfg = {}
+print(str(cfg.get('name') or 'Assistant'))
+PY
+)"
+
+if [ ! -f "$IDENTITY_DIR/IDENTITY.md" ]; then
+  echo "== provisioning portable identity =="
+  cp "$IDENTITY_TEMPLATES/IDENTITY.md" "$IDENTITY_DIR/IDENTITY.md"
+  python3 - "$IDENTITY_DIR/IDENTITY.md" "$CURRENT_NAME" <<'PY'
+import re
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+name = sys.argv[2]
+text = path.read_text()
+text = re.sub(r'(?m)^Name:\s*.*$', f'Name: {name}', text, count=1)
+path.write_text(text)
+PY
+fi
+if [ ! -f "$IDENTITY_DIR/OPERATING_PRINCIPLES.md" ]; then
+  cp "$IDENTITY_TEMPLATES/OPERATING_PRINCIPLES.md" "$IDENTITY_DIR/OPERATING_PRINCIPLES.md"
+fi
+
+# Ensure components can see shell-owned portable memory and record identity
+# metadata without replacing user configuration.
 python3 - "$ROOT" <<'PY'
 import json
 import sys
@@ -74,7 +124,22 @@ cfg["extra_dirs"] = extra
 cfg["agent_dir"] = str(root)
 cfg["signals_dir"] = str(root / "backtalk")
 path.write_text(json.dumps(cfg, indent=2) + "\n")
+
+shell_path = root / "fullstack-agent.json"
+try:
+    shell = json.loads(shell_path.read_text())
+except FileNotFoundError:
+    shell = {}
+identity = dict(shell.get("identity") or {})
+identity.setdefault("name", cfg.get("name") or "Assistant")
+identity["file"] = "identity/IDENTITY.md"
+identity["principles_file"] = "identity/OPERATING_PRINCIPLES.md"
+shell["identity"] = identity
+shell_path.write_text(json.dumps(shell, indent=2) + "\n")
 PY
 
 echo "== repair complete =="
-echo "Run: $ROOT/fullstack-agent/verify-vm.sh --root $ROOT"
+echo "Identity: $ROOT/identity/IDENTITY.md"
+echo "Status:   $ROOT/fullstack-agent/agentctl.py --root $ROOT status"
+echo "Verify:   $ROOT/fullstack-agent/verify-vm.sh --root $ROOT"
+echo "Memory:   $ROOT/fullstack-agent/verify-memory.sh --root $ROOT"
