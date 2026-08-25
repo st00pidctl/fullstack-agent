@@ -10,10 +10,9 @@ usage() {
   cat <<'EOF'
 Usage: ./verify-vm.sh [--root PATH] [--skip-core]
 
-Checks repository layout, portable memory, cross-component configuration,
-Backtalk core selection, a headless agent turn, remote endpoint assets, and the
-visualizer state endpoint. The headless core test requires provider
-authentication but does not require audio hardware.
+Checks repository layout, portable identity and memory, cross-component
+configuration, Backtalk core selection, a headless agent turn, remote endpoint
+assets, and the visualizer state endpoint. No VM audio hardware is required.
 EOF
 }
 
@@ -38,6 +37,7 @@ for d in \
   ai-memory-vault \
   ai-visualizer \
   barehands \
+  identity \
   memory \
   "memory/00 - Inbox" \
   "memory/01 - Daily Notes" \
@@ -52,6 +52,8 @@ for f in \
   fullstack-agent.json \
   backtalk/backtalk.json \
   ai-visualizer/ai-visualizer.json \
+  identity/IDENTITY.md \
+  identity/OPERATING_PRINCIPLES.md \
   memory/VAULT-INDEX.md \
   "memory/Active Priorities.md" \
   "memory/01 - Daily Notes/Daily Note Template.md"; do
@@ -60,6 +62,7 @@ done
 
 if python3 - "$ROOT" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -67,15 +70,25 @@ root = Path(sys.argv[1]).expanduser().resolve()
 shell = json.loads((root / "fullstack-agent.json").read_text())
 backtalk = json.loads((root / "backtalk/backtalk.json").read_text())
 visualizer = json.loads((root / "ai-visualizer/ai-visualizer.json").read_text())
+identity_text = (root / "identity/IDENTITY.md").read_text()
 
 provider = shell.get("core", {}).get("provider")
 assert provider, "fullstack-agent.json has no core.provider"
 assert backtalk.get("core", {}).get("provider") == provider, \
     "shell and Backtalk provider differ"
 assert Path(shell["agent_dir"]).resolve() == root, "shell agent_dir is wrong"
-assert shell.get("identity_file") == "AGENTS.md", "AGENTS.md is not canonical"
 assert Path(shell["memory_dir"]).resolve() == root / "memory", \
     "shell memory_dir is wrong"
+identity = shell.get("identity") or {}
+assert identity.get("file") == "identity/IDENTITY.md", \
+    "portable identity file is not configured"
+assert identity.get("principles_file") == "identity/OPERATING_PRINCIPLES.md", \
+    "portable operating principles are not configured"
+match = re.search(r"(?m)^Name:\s*(.+?)\s*$", identity_text)
+assert match, "identity file has no Name field"
+name = match.group(1).strip()
+assert backtalk.get("name") == name, "Backtalk name differs from portable identity"
+assert visualizer.get("name") == name, "visualizer name differs from portable identity"
 assert Path(backtalk["agent_dir"]).resolve() == root, "Backtalk agent_dir is wrong"
 assert Path(backtalk["signals_dir"]).resolve() == root / "backtalk", \
     "Backtalk signals_dir is wrong"
@@ -83,12 +96,19 @@ assert str(root / "memory") in backtalk.get("extra_dirs", []), \
     "portable memory is not exposed to Backtalk core"
 assert Path(visualizer["bus_dir"]).resolve() == root / "backtalk", \
     "visualizer bus_dir is wrong"
-print(f"WIRING_OK provider={provider}")
+print(f"WIRING_OK name={name} provider={provider}")
 PY
 then
-  pass "configuration and cross-component wiring"
+  pass "identity, configuration, and cross-component wiring"
 else
-  bad "configuration or cross-component wiring invalid"
+  bad "identity or cross-component wiring invalid"
+fi
+
+if grep -q 'identity/IDENTITY.md' "$ROOT/AGENTS.md" && \
+   grep -q 'identity/OPERATING_PRINCIPLES.md' "$ROOT/AGENTS.md"; then
+  pass "AGENTS.md contains portable identity startup protocol"
+else
+  bad "AGENTS.md does not contain portable identity startup protocol"
 fi
 
 if grep -q 'memory/VAULT-INDEX.md' "$ROOT/AGENTS.md" && \
@@ -178,8 +198,8 @@ trap - EXIT
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then
-  echo "VERIFIED: software stack, memory wiring, selected core, and headless remote endpoint assets are ready."
-  echo "VM microphone and speaker devices are not required for the remote endpoint. Run verify-endpoint.sh for the full remote voice loop."
+  echo "VERIFIED: identity, software stack, memory wiring, selected core, and headless endpoint assets are ready."
+  echo "Run verify-memory.sh to prove portable memory survives provider-session loss."
   exit 0
 else
   echo "NOT READY: one or more checks failed."
