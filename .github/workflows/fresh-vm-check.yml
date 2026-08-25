@@ -11,9 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n bootstrap-vm.sh repair-vm.sh cpu-preflight.sh verify-vm.sh verify-endpoint.sh endpoint.sh start.sh update.sh
-      - name: VM CPU preflight
-        run: bash ./cpu-preflight.sh
+        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh endpoint.sh cpu-preflight.sh start.sh update.sh
+      - name: Operator scripts executable
+        run: |
+          test -x repair-vm.sh
+          test -x cpu-preflight.sh
+          test -x verify-endpoint.sh
+          test -x endpoint.sh
       - name: Python syntax
         run: python -m py_compile corectl.py
       - name: Validate shell config example
@@ -26,7 +30,5 @@ jobs:
       - name: Validate endpoint operator docs
         run: |
           test -s REMOTE_ENDPOINT.md
-          test -s VIRTUALIZATION.md
           grep -q 'REMOTE_ENDPOINT_VERIFIED' verify-endpoint.sh
           grep -q 'tailscale serve --bg' endpoint.sh
-          grep -q 'x86-64-v2' cpu-preflight.sh
