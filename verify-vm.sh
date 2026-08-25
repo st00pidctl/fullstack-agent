@@ -119,10 +119,10 @@ else
 fi
 
 if [ "$CPU_OK" -eq 1 ]; then
-  if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.endpoint_server --self-test); then
-    pass "remote endpoint server and PWA assets ready"
+  if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.endpoint_headless --self-test); then
+    pass "headless remote endpoint server and PWA assets ready"
   else
-    bad "remote endpoint self-test failed"
+    bad "headless remote endpoint self-test failed"
   fi
 else
   warn "remote endpoint self-test skipped until VM CPU model is corrected"
@@ -178,8 +178,8 @@ trap - EXIT
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then
-  echo "VERIFIED: software stack, memory wiring, selected core, and remote endpoint assets are ready."
-  echo "VM microphone and speaker devices are optional. Run verify-endpoint.sh for the full remote voice loop."
+  echo "VERIFIED: software stack, memory wiring, selected core, and headless remote endpoint assets are ready."
+  echo "VM microphone and speaker devices are not required for the remote endpoint. Run verify-endpoint.sh for the full remote voice loop."
   exit 0
 else
   echo "NOT READY: one or more checks failed."
