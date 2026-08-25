@@ -22,6 +22,12 @@ bad() { printf 'FAIL  %s\n' "$1"; exit 1; }
 command -v curl >/dev/null 2>&1 || bad "curl missing"
 command -v ffmpeg >/dev/null 2>&1 || bad "ffmpeg missing"
 
+if bash "$ROOT/fullstack-agent/cpu-preflight.sh"; then
+  pass "VM CPU feature baseline supported"
+else
+  bad "VM CPU feature baseline too old for current voice dependencies"
+fi
+
 if (cd "$ROOT/backtalk" && "$PY" -m backtalk.endpoint_server --self-test); then
   pass "endpoint server and PWA assets present"
 else
@@ -109,7 +115,7 @@ pass "core reply returned through endpoint"
 
 curl -fsS "http://127.0.0.1:$PORT$AUDIO_URL" -o "$TMP/first.wav" || bad "reply audio fetch failed"
 [ "$(head -c 4 "$TMP/first.wav")" = "RIFF" ] || bad "reply audio is not WAV"
-pass "Peter synthesized remote reply audio"
+pass "endpoint synthesized remote reply audio"
 TEXT_END="$(date +%s)"
 printf 'INFO  text+core+TTS elapsed=%ss\n' "$((TEXT_END - TEXT_START))"
 
