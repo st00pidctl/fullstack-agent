@@ -1,13 +1,14 @@
 {
-  "version": 2,
+  "version": 3,
   "agent_dir": "~/my-agent",
-  "identity_file": "AGENTS.md",
+  "identity": {
+    "name": "Assistant",
+    "file": "identity/IDENTITY.md",
+    "principles_file": "identity/OPERATING_PRINCIPLES.md"
+  },
+  "memory_dir": "~/my-agent/memory",
   "core": {
-    "provider": "claude",
-    "model": "default",
-    "effort": "default",
-    "resume_last_session": false,
-    "options": {}
+    "provider": "codex"
   },
   "permissions": {
     "mode": "ask"
@@ -16,6 +17,7 @@
     "memory": true,
     "voice": true,
     "visualizer": true,
-    "barehands": false
+    "barehands": false,
+    "remote_endpoint": true
   }
 }
