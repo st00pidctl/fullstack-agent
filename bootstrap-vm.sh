@@ -49,14 +49,15 @@ if [ "$INSTALL_SYSTEM" -eq 1 ]; then
     echo "== installing VM packages =="
     sudo apt-get update
     sudo apt-get install -y \
-      ca-certificates curl git \
+      ca-certificates curl git bubblewrap \
       python3 python3-venv python3-pip python3-dev build-essential \
       ffmpeg espeak-ng libportaudio2 portaudio19-dev libsndfile1
   else
-    echo "No apt-get detected. Install git, curl, Python 3, ffmpeg, espeak-ng, and PortAudio manually."
+    echo "No apt-get detected. Install git, curl, Python 3, ffmpeg, espeak-ng, PortAudio, and bubblewrap manually."
   fi
 fi
 
+# User-local official standalone binaries must win over distro/snap shims.
 export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 if ! command -v uv >/dev/null 2>&1; then
@@ -103,10 +104,25 @@ sync_repo "https://github.com/jaredrhod/ai-visualizer.git" \
 sync_repo "https://github.com/jaredrhod/barehands.git" \
   "$ROOT/barehands" "main"
 
-if [ "$PROVIDER" = "codex" ] && ! command -v codex >/dev/null 2>&1; then
-  echo "== installing OpenAI Codex CLI =="
+if [ "$PROVIDER" = "codex" ]; then
+  # Always install/update through OpenAI's official standalone installer.
+  # Do not accept an arbitrary pre-existing `codex` from Snap or another
+  # third-party package as satisfying the runtime requirement. The official
+  # installer manages its package under ~/.codex and exposes ~/.local/bin/codex.
+  echo "== installing/updating official OpenAI Codex CLI =="
   curl -fsSL https://chatgpt.com/codex/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
+  if [ ! -x "$HOME/.local/bin/codex" ]; then
+    echo "Official Codex installer did not create $HOME/.local/bin/codex" >&2
+    exit 1
+  fi
+  CODEX_BIN="$(command -v codex)"
+  if [ "$CODEX_BIN" != "$HOME/.local/bin/codex" ]; then
+    echo "Codex PATH provenance check failed: expected $HOME/.local/bin/codex, got $CODEX_BIN" >&2
+    exit 1
+  fi
+  echo "Codex binary: $CODEX_BIN"
+  codex --version
 fi
 
 if [ ! -f "$ROOT/AGENTS.md" ]; then
@@ -204,7 +220,7 @@ cfg.update({
 core = dict(cfg.get("core") or {})
 core["provider"] = provider
 if provider == "codex":
-    core.setdefault("binary", "codex")
+    core["binary"] = str(Path.home() / ".local/bin/codex")
     core.setdefault("model", "")
     core.setdefault("extra_args", [])
     cfg["model"] = ""
