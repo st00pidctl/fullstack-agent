@@ -14,6 +14,7 @@ while [ "$#" -gt 0 ]; do
 done
 ROOT="${ROOT/#\~/$HOME}"
 PY="$ROOT/backtalk/.venv/bin/python"
+ENDPOINT_MODULE="backtalk.endpoint_headless"
 
 pass() { printf 'PASS  %s\n' "$1"; }
 bad() { printf 'FAIL  %s\n' "$1"; exit 1; }
@@ -28,10 +29,10 @@ else
   bad "VM CPU feature baseline too old for current voice dependencies"
 fi
 
-if (cd "$ROOT/backtalk" && "$PY" -m backtalk.endpoint_server --self-test); then
-  pass "endpoint server and PWA assets present"
+if (cd "$ROOT/backtalk" && "$PY" -m "$ENDPOINT_MODULE" --self-test); then
+  pass "headless endpoint server and PWA assets present"
 else
-  bad "endpoint self-test failed"
+  bad "headless endpoint self-test failed"
 fi
 
 PORT="$($PY - <<'PY'
@@ -48,7 +49,7 @@ START_TS="$(date +%s)"
 
 (
   cd "$ROOT/backtalk"
-  "$PY" -m backtalk.endpoint_server --host 127.0.0.1 --port "$PORT" --no-warm >"$LOG" 2>&1
+  "$PY" -m "$ENDPOINT_MODULE" --host 127.0.0.1 --port "$PORT" --no-warm >"$LOG" 2>&1
 ) &
 PID=$!
 cleanup() {
@@ -71,7 +72,7 @@ if [ "$ready" -ne 1 ]; then
   cat "$LOG" >&2 || true
   bad "endpoint server did not become healthy"
 fi
-pass "loopback endpoint healthy"
+pass "loopback endpoint healthy without VM audio server"
 
 if curl -fsS "http://127.0.0.1:$PORT/" | grep -q 'HOLD TO TALK'; then
   pass "mobile PWA served"
@@ -149,7 +150,7 @@ curl -fsS "http://127.0.0.1:$PORT$SECOND_AUDIO_URL" -o "$TMP/second.wav" || bad 
 pass "full remote voice round trip completed"
 
 END_TS="$(date +%s)"
-printf '\nREMOTE_ENDPOINT_VERIFIED: no VM microphone or speaker required.\n'
+printf '\nREMOTE_ENDPOINT_VERIFIED: no VM microphone, speaker, PulseAudio, or PipeWire required.\n'
 printf 'INFO  full verification elapsed=%ss\n' "$((END_TS - START_TS))"
 
 if command -v free >/dev/null 2>&1; then
