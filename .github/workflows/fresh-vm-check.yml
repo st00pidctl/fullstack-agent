@@ -1,0 +1,16 @@
+name: fresh-vm-check
+
+on:
+  push:
+    branches: [universal-core-architecture]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: bash -n bootstrap-vm.sh verify-vm.sh start.sh update.sh
+      - name: Validate shell config example
+        run: python -m json.tool config/fullstack-agent.example.json >/dev/null
