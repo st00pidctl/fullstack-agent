@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Universal Fullstack Agent Core Configuration",
+  "type": "object",
+  "required": ["provider"],
+  "properties": {
+    "provider": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "default": "default"},
+    "effort": {"type": "string", "default": "default"},
+    "resume_last_session": {"type": "boolean", "default": false},
+    "options": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": false
+}

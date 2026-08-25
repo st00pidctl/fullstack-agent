@@ -1,0 +1,34 @@
+name: fresh-vm-check
+
+on:
+  push:
+    branches: [universal-core-architecture]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh endpoint.sh cpu-preflight.sh start.sh update.sh
+      - name: Operator scripts executable
+        run: |
+          test -x repair-vm.sh
+          test -x cpu-preflight.sh
+          test -x verify-endpoint.sh
+          test -x endpoint.sh
+      - name: Python syntax
+        run: python -m py_compile corectl.py
+      - name: Validate shell config example
+        run: python -m json.tool config/fullstack-agent.example.json >/dev/null
+      - name: Validate portable memory templates
+        run: |
+          test -s templates/portable-memory/VAULT-INDEX.md
+          test -s 'templates/portable-memory/Active Priorities.md'
+          test -s 'templates/portable-memory/Daily Note Template.md'
+      - name: Validate endpoint operator docs
+        run: |
+          test -s REMOTE_ENDPOINT.md
+          grep -q 'REMOTE_ENDPOINT_VERIFIED' verify-endpoint.sh
+          grep -q 'tailscale serve --bg' endpoint.sh

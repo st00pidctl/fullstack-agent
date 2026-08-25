@@ -1,88 +1,193 @@
-# fullstack-agent
+# fullstack-agent universal fork
 
-> **Never used Claude Code?** Start at [jaredrhod.com](https://jaredrhod.com): pick your situation and it routes you to the right path.
+A portable agent shell with persistent identity, memory, voice, visual state, optional hands, replaceable reasoning cores, and replaceable endpoint devices.
 
-**Runs on:** Claude Code only; the installer itself is a Claude Code wizard. The $20 Pro plan is enough.
+This fork is based on Jared Rhodenizer's `fullstack-agent`, but the ownership model is intentionally different: **the agent belongs to the shell, not to Claude Code, Codex, a particular VM, or a particular microphone.** Swap the core or the endpoint without rebuilding identity, memory, STT, TTS, visualizer, or operator workflow.
 
-Not an agent that writes full-stack code. **An agent that HAS a full stack: memory, voice, and face, plus an optional set of hands.** This repo assembles my whole setup on your machine in one guided conversation, and when it finishes, your screen is a living circuit board with your agent's name on the chip, and it speaks first:
+## Architecture
 
-> "Hello [you], what are we working on today?"
-
-[![Watch the tour: My Jarvis AI Assistant, free on GitHub](https://img.youtube.com/vi/FiOTrxq9ckM/maxresdefault.jpg)](https://www.youtube.com/watch?v=FiOTrxq9ckM)
-
-**Nine minutes shows you everything you're about to get** (the voice, the face, the memory, and the hands): the tour video above, straight from my own desk.
-
-That's not a demo clip. That's minute one.
-
-## What you get
-
-Four pieces, each its own open repo, each excellent alone, assembled here into one agent:
-
-- **The mind: [ai-memory-vault](https://github.com/jaredrhod/ai-memory-vault).** A real, persistent memory built on plain text files your AI reads and writes. It remembers you, your work, and every lesson, across every session, with no size ceiling.
-- **The mouth: [backtalk](https://github.com/jaredrhod/backtalk).** Hold a key, talk out loud, and your agent answers through your speakers about a second later, with all its tools and its whole personality.
-- **The face: [ai-visualizer](https://github.com/jaredrhod/ai-visualizer).** Full-screen visualizers that idle, listen, think, and speak in sync with the real conversation. Four faces ship, including the living circuit board from my videos.
-- **The hands, the optional extra: [barehands](https://github.com/jaredrhod/barehands).** Move notes and images around your screen with your bare hands through your webcam. No headset, no controllers. Opens in its own window instead of the face. Take it now or add it later by running the same install again.
-
-Every piece is optional. The wizard asks which ones you want and explains each in plain English before you decide.
-
-## Install
-
-You need [Claude Code](https://jaredrhod.com/start) with a Claude subscription. Mac and Linux also use git (macOS offers to install it the first time you use it). Windows needs nothing else: the installer sets up git for you during setup. Then one paste into your terminal.
-
-Mac and Linux:
-
-```
-mkdir -p ~/my-agent && cd ~/my-agent && git clone https://github.com/jaredrhod/fullstack-agent && cd fullstack-agent && claude "set me up"
+```text
+AGENTS.md + shell-owned memory
+            |
+      stable core contract
+            |
+   replaceable runtime adapter
+            |
+      headless agent host
+            |
+   replaceable endpoint device
 ```
 
-Windows (PowerShell):
+`AGENTS.md` is canonical. Provider-specific files such as `CLAUDE.md` are compatibility shims only.
 
+The current reference deployment separates three things explicitly:
+
+```text
+CORE != AGENT != ENDPOINT
 ```
-$d="$env:USERPROFILE\.local\bin"; if (Test-Path "$d\claude.exe") { $env:Path="$d;$env:Path" }; New-Item -ItemType Directory -Force -Path $HOME\my-agent | Out-Null; cd $HOME\my-agent; if (-not (Test-Path fullstack-agent)) { Invoke-WebRequest https://github.com/jaredrhod/fullstack-agent/archive/refs/heads/main.zip -OutFile fsa.zip; Expand-Archive fsa.zip . -Force; Rename-Item fullstack-agent-main fullstack-agent; Remove-Item fsa.zip }; cd fullstack-agent; if (Get-Command claude -ErrorAction SilentlyContinue) { claude "set me up" } else { Write-Output "Claude Code is not installed yet. Install it first at https://jaredrhod.com/start then paste this again." }
+
+The core reasons and uses tools. The shell owns identity and durable state. The endpoint owns local human I/O such as microphone, speaker, and touch controls.
+
+## Core integration lanes
+
+The matching `st00pidctl/backtalk` universal branch supports three ways to attach a core:
+
+1. Built-in adapters for Claude Code and OpenAI Codex CLI.
+2. `generic-cli` for any wrapper that reads prompts from stdin and writes assistant text to stdout.
+3. A native drop-in Python adapter selected by file path or import path, with no Backtalk registry edit required.
+
+This means a future runtime can join at the simplest level first, then gain a native adapter later without changing the shell.
+
+## Fresh VM quickstart
+
+Ubuntu 24.04 LTS is the primary clean-room target. The bootstrap uses a managed Python 3.12 for Backtalk and defaults to Codex as the first non-Claude validation core.
+
+```bash
+mkdir -p ~/universal-agent
+cd ~/universal-agent
+git clone --branch universal-core-architecture https://github.com/st00pidctl/fullstack-agent.git
+cd fullstack-agent
+./bootstrap-vm.sh --provider codex --name Assistant
 ```
 
-(The Windows command downloads the toolbox as a zip on purpose, so it works on a machine with no git installed. The installer sets up git for you during setup. Safe to paste twice: a second run skips the download and picks up where it left off. If it tells you Claude Code is not installed yet, do the [start page](https://jaredrhod.com/start) first. Heads up for that step on Windows: the Claude Code installer downloads about 330 MB and prints nothing at all while it does, so leave that window alone until it says Installation complete.)
+On a headless VM, authenticate Codex with:
 
-Claude Code opens with the installer already talking to you. (The agent lives in a folder right in your home directory on purpose: on Macs, things that run in the background out of Documents get silently blocked by the system.) Everything after that is a conversation: it asks for your agent's name and personality (or hands you mine, Jarvis, ready to use), which pieces you want, and where your notes live. It does the installing, the configuring, and the wiring itself.
+```bash
+codex login --device-auth
+```
 
-## Already built some of this?
+Then run the software/core verifier:
 
-Then you're exactly who this was designed around. If you set up a memory vault, a voice system, or a visualizer before, including the ones my old prompts had your AI hand-build, the wizard adopts before it installs:
+```bash
+cd ~/universal-agent
+./fullstack-agent/verify-vm.sh
+```
 
-- **Your agent's identity and your vault are yours.** Found, kept, never rebuilt, never moved. No questions you already answered.
-- **Hand-built voice lines and visualizers get honestly replaced**, because these repos carry a year of fixes and keep improving with a `git pull`, while a hand-built version is frozen the day it was written. Your old build stays on disk, untouched. Nothing you made is ever deleted.
-- **Except your visualizer scene, which gets promoted.** If your AI built you a custom scene back then, the wizard copies it into the visualizer's gallery as your own face, sitting right beside mine.
+The verifier checks repository layout, portable memory, JSON and cross-component wiring, Backtalk's Python version, selected-core startup, real multi-turn core resume, and the visualizer state endpoint.
 
-## After setup
+See `FRESH_VM.md` for VM sizing and clean-room success criteria.
 
-- **Use your agent:** the wizard leaves three shortcuts on your Desktop, named after your agent. **Chat** opens a typed session, terminal only. **Talk** starts the voice and the face. **Barehands** starts the voice and the hands board (the board is the screen in that mode). Double-click the mood you want; Ctrl-C in the window stops it. (They just run `fullstack-agent/start.sh`, or `start.bat` on Windows, if you ever prefer the terminal.)
-- **Something broken or confusing? Ask your agent to fix it.** Seriously. Open the chat and describe the problem. Every repo here ships a troubleshooting guide written for your agent to read, and your agent is instructed during setup to do the fixing itself. This is the part everyone finds out late: you never have to debug this stack yourself.
-- **Update everything:** `./fullstack-agent/update.sh` (Windows: `fullstack-agent\update.bat`). Your files live outside the repos, so updates never touch who your agent is or what it remembers.
-- **Daily habit:** open Claude Code in your agent's folder. That's where it lives.
+## Remote voice endpoint
 
-## The fine print that matters
+The VM no longer needs microphone or speaker passthrough for full voice operation.
 
-- The wizard never deletes, overwrites, or moves anything you built. Replacements retire the old thing in place and say so.
-- Your vault stays wherever it already lives. Pieces connect by configuration paths, not by relocation.
-- Requirements per piece: the voice needs a mic and about 1 GB of local models on first run; the hands need a webcam and Chrome; the mind and face need nothing but Python 3, which ships with macOS and most Linux. Windows notes live in each piece's own README.
-- Cross-piece problems: `TROUBLESHOOTING.md` here. Everything else: each piece's own guide.
+The matching Backtalk branch includes a mobile-first browser/PWA endpoint. The phone provides microphone capture and speaker playback. Peter keeps Whisper STT, TTS, memory, session state, and the selected reasoning core.
 
-## The rest of it
+First verify the complete synthetic remote voice loop:
 
-Everything here is free and open, and there is a whole community using it.
+```bash
+cd ~/universal-agent
+./fullstack-agent/verify-endpoint.sh
+```
 
-- **The videos.** Free series on all of it: https://youtube.com/@jaredrhod
-- **The Discord.** Thousands of builders, and the fastest place to get unstuck: https://discord.gg/YSdsqMv3V8
-- **Everything else,** free and open: https://jaredrhod.com
+A successful run ends with:
 
-## Support
+```text
+REMOTE_ENDPOINT_VERIFIED: no VM microphone or speaker required.
+```
 
-Free to use, and always will be. If this helped you out, you can buy me a coffee:
+Then start the private endpoint and expose it over tailnet-only HTTPS:
 
-[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jaredrhod)
+```bash
+./fullstack-agent/endpoint.sh start --tailscale
+./fullstack-agent/endpoint.sh status
+```
 
-## License
+Open the HTTPS Tailscale Serve address on the phone. The PWA provides hold-to-talk, transcript, reply text, endpoint state, interrupt, and phone audio playback.
 
-Copyright (c) 2026 Jared Rhodenizer.
+See `REMOTE_ENDPOINT.md` for lifecycle, systemd, security, and capacity details.
 
-Licensed under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later). **Use it in your business, commercially, for free.** Run it, change it, build your workflow on top of it, and charge for the work you do with it. The one rule is that it stays open: if you hand it to someone else, or run a modified version as a service other people use, your version ships under this same license with its source available. Credit me when you build on it. Want it inside a closed-source commercial product? Email license@jaredrhod.com. Full terms are in the LICENSE file and at https://www.gnu.org/licenses/agpl-3.0.html
+## Portable memory
+
+The bootstrap provisions a provider-neutral Markdown vault under `memory/`:
+
+```text
+memory/
+  VAULT-INDEX.md
+  Active Priorities.md
+  00 - Inbox/
+  01 - Daily Notes/
+    Daily Note Template.md
+  90 - Archive/
+  99 - Resources/
+```
+
+`AGENTS.md` tells every core to read the vault index and active priorities at session start, then retrieve other notes only when relevant. The memory directory can also be opened directly as an Obsidian vault, but Obsidian is not required for the agent to use it.
+
+The upstream `ai-memory-vault` repository is still cloned as reference and optional tooling, but its Claude-era bootstrap is no longer allowed to own canonical identity or memory.
+
+## Switch cores
+
+`corectl.py` changes the reasoning runtime while leaving identity and memory alone.
+
+```bash
+cd ~/universal-agent
+./fullstack-agent/corectl.py status
+./fullstack-agent/corectl.py list
+./fullstack-agent/corectl.py use codex
+./fullstack-agent/corectl.py use claude
+```
+
+Use any command-line harness through a wrapper:
+
+```bash
+./fullstack-agent/corectl.py use generic-cli --command /path/to/my-wrapper
+```
+
+Use a native Python drop-in adapter:
+
+```bash
+./fullstack-agent/corectl.py use-custom my-runtime /path/to/my_core.py:MyRuntimeBrain
+```
+
+Backtalk includes `examples/custom_core.py` as the reference contract.
+
+## Components
+
+- **Shell and lifecycle:** this repository
+- **Voice, endpoint server, and core adapter layer:** `st00pidctl/backtalk`, branch `universal-core-architecture`
+- **Portable memory:** shell-owned `memory/`
+- **Memory reference/tooling:** Jared Rhodenizer's `ai-memory-vault`
+- **Face:** Jared Rhodenizer's `ai-visualizer`, core-neutral
+- **Hands:** Jared Rhodenizer's `barehands`, core-neutral
+- **Endpoint hardware:** phone/browser first, designed to be replaceable
+
+## Core contract
+
+See:
+
+- `architecture/CORE_CONTRACT.md`
+- `architecture/PORTABILITY.md`
+- `cores/README.md`
+- `UNIVERSALIZATION.md`
+- `FRESH_VM.md`
+- `REMOTE_ENDPOINT.md`
+
+Canonical shell configuration is modeled in `config/fullstack-agent.example.json`.
+
+Portable permission vocabulary:
+
+- `ask`
+- `trusted`
+- `read-only`
+
+Each adapter maps those semantics to the safest compatible provider behavior and reports unsupported capabilities instead of pretending feature parity.
+
+## Current limitations
+
+- Codex `exec --json` currently emits completed agent-message items rather than token-by-token assistant text, so spoken output begins after the completed message is available.
+- Codex does not currently expose the same spoken per-tool approval callback used by the Claude SDK adapter. The Codex path remains sandboxed and noninteractive for remote voice turns.
+- Some voice-console operations are provider-specific. Capability negotiation is authoritative.
+- The first browser endpoint serializes turns through one agent session. It is intentionally not a multi-user concurrent service yet.
+- The first endpoint relies on Tailscale as the private HTTPS and network identity boundary. Future multi-user/customer use should add explicit endpoint pairing and per-device authorization.
+- Automated CI validates code shape and assets. Authenticated core inference and local speech models are validated on the clean VM through `verify-vm.sh` and `verify-endpoint.sh`.
+
+## Upstream compatibility
+
+Keep provider-neutral upstream pieces close to Jared's repositories so fixes remain mergeable. Prefer adapters and generated configuration over invasive rewrites.
+
+Original project and concept:
+
+`https://github.com/jaredrhod/fullstack-agent`
+
+The original project is AGPL-3.0-or-later. This fork retains the upstream licensing obligations. Review `LICENSE` before distribution, hosted service use, or commercial derivative use.
