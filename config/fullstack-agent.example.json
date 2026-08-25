@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "agent_dir": "~/my-agent",
+  "identity_file": "AGENTS.md",
+  "core": {
+    "provider": "claude",
+    "model": "default",
+    "effort": "default",
+    "resume_last_session": false,
+    "options": {}
+  },
+  "permissions": {
+    "mode": "ask"
+  },
+  "components": {
+    "memory": true,
+    "voice": true,
+    "visualizer": true,
+    "barehands": false
+  }
+}
