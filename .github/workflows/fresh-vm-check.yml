@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh start.sh update.sh
+        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh endpoint.sh start.sh update.sh
       - name: Python syntax
         run: python -m py_compile corectl.py
       - name: Validate shell config example
@@ -21,3 +21,8 @@ jobs:
           test -s templates/portable-memory/VAULT-INDEX.md
           test -s 'templates/portable-memory/Active Priorities.md'
           test -s 'templates/portable-memory/Daily Note Template.md'
+      - name: Validate endpoint operator docs
+        run: |
+          test -s REMOTE_ENDPOINT.md
+          grep -q 'REMOTE_ENDPOINT_VERIFIED' verify-endpoint.sh
+          grep -q 'tailscale serve --bg' endpoint.sh

@@ -1,8 +1,8 @@
 # fullstack-agent universal fork
 
-A portable agent shell with persistent identity, memory, voice, visual state, optional hands, and a replaceable reasoning core.
+A portable agent shell with persistent identity, memory, voice, visual state, optional hands, replaceable reasoning cores, and replaceable endpoint devices.
 
-This fork is based on Jared Rhodenizer's `fullstack-agent`, but the ownership model is intentionally different: **the agent belongs to the shell, not to Claude Code, Codex, or any other single harness.** Swap the core without rebuilding identity, memory, STT, TTS, visualizer, Barehands, or the operator workflow.
+This fork is based on Jared Rhodenizer's `fullstack-agent`, but the ownership model is intentionally different: **the agent belongs to the shell, not to Claude Code, Codex, a particular VM, or a particular microphone.** Swap the core or the endpoint without rebuilding identity, memory, STT, TTS, visualizer, or operator workflow.
 
 ## Architecture
 
@@ -13,10 +13,20 @@ AGENTS.md + shell-owned memory
             |
    replaceable runtime adapter
             |
- voice + face + hands + lifecycle
+      headless agent host
+            |
+   replaceable endpoint device
 ```
 
 `AGENTS.md` is canonical. Provider-specific files such as `CLAUDE.md` are compatibility shims only.
+
+The current reference deployment separates three things explicitly:
+
+```text
+CORE != AGENT != ENDPOINT
+```
+
+The core reasons and uses tools. The shell owns identity and durable state. The endpoint owns local human I/O such as microphone, speaker, and touch controls.
 
 ## Core integration lanes
 
@@ -46,16 +56,46 @@ On a headless VM, authenticate Codex with:
 codex login --device-auth
 ```
 
-Then run the microphone-free verifier:
+Then run the software/core verifier:
 
 ```bash
 cd ~/universal-agent
 ./fullstack-agent/verify-vm.sh
 ```
 
-The verifier checks repository layout, portable memory, JSON and cross-component wiring, Backtalk's Python version, selected-core startup, one real headless agent turn, and the visualizer state endpoint.
+The verifier checks repository layout, portable memory, JSON and cross-component wiring, Backtalk's Python version, selected-core startup, real multi-turn core resume, and the visualizer state endpoint.
 
-See `FRESH_VM.md` for VM sizing, audio requirements, SSH tunneling, and success criteria.
+See `FRESH_VM.md` for VM sizing and clean-room success criteria.
+
+## Remote voice endpoint
+
+The VM no longer needs microphone or speaker passthrough for full voice operation.
+
+The matching Backtalk branch includes a mobile-first browser/PWA endpoint. The phone provides microphone capture and speaker playback. Peter keeps Whisper STT, TTS, memory, session state, and the selected reasoning core.
+
+First verify the complete synthetic remote voice loop:
+
+```bash
+cd ~/universal-agent
+./fullstack-agent/verify-endpoint.sh
+```
+
+A successful run ends with:
+
+```text
+REMOTE_ENDPOINT_VERIFIED: no VM microphone or speaker required.
+```
+
+Then start the private endpoint and expose it over tailnet-only HTTPS:
+
+```bash
+./fullstack-agent/endpoint.sh start --tailscale
+./fullstack-agent/endpoint.sh status
+```
+
+Open the HTTPS Tailscale Serve address on the phone. The PWA provides hold-to-talk, transcript, reply text, endpoint state, interrupt, and phone audio playback.
+
+See `REMOTE_ENDPOINT.md` for lifecycle, systemd, security, and capacity details.
 
 ## Portable memory
 
@@ -105,11 +145,12 @@ Backtalk includes `examples/custom_core.py` as the reference contract.
 ## Components
 
 - **Shell and lifecycle:** this repository
-- **Voice and core adapter layer:** `st00pidctl/backtalk`, branch `universal-core-architecture`
+- **Voice, endpoint server, and core adapter layer:** `st00pidctl/backtalk`, branch `universal-core-architecture`
 - **Portable memory:** shell-owned `memory/`
 - **Memory reference/tooling:** Jared Rhodenizer's `ai-memory-vault`
 - **Face:** Jared Rhodenizer's `ai-visualizer`, core-neutral
 - **Hands:** Jared Rhodenizer's `barehands`, core-neutral
+- **Endpoint hardware:** phone/browser first, designed to be replaceable
 
 ## Core contract
 
@@ -120,6 +161,7 @@ See:
 - `cores/README.md`
 - `UNIVERSALIZATION.md`
 - `FRESH_VM.md`
+- `REMOTE_ENDPOINT.md`
 
 Canonical shell configuration is modeled in `config/fullstack-agent.example.json`.
 
@@ -134,10 +176,11 @@ Each adapter maps those semantics to the safest compatible provider behavior and
 ## Current limitations
 
 - Codex `exec --json` currently emits completed agent-message items rather than token-by-token assistant text, so spoken output begins after the completed message is available.
-- Codex does not currently expose the same spoken per-tool approval callback used by the Claude SDK adapter. The Codex path remains sandboxed and uses its automatic review lane.
+- Codex does not currently expose the same spoken per-tool approval callback used by the Claude SDK adapter. The Codex path remains sandboxed and noninteractive for remote voice turns.
 - Some voice-console operations are provider-specific. Capability negotiation is authoritative.
-- Full voice inside a VM requires guest-visible microphone and speaker devices. A headless VM can still validate the core, memory layout, state bus, and visualizer.
-- The automated checks validate syntax, configuration shape, and the drop-in loader. The authenticated clean-VM runtime test is intentionally performed by `verify-vm.sh` after you log the selected provider in on the VM.
+- The first browser endpoint serializes turns through one agent session. It is intentionally not a multi-user concurrent service yet.
+- The first endpoint relies on Tailscale as the private HTTPS and network identity boundary. Future multi-user/customer use should add explicit endpoint pairing and per-device authorization.
+- Automated CI validates code shape and assets. Authenticated core inference and local speech models are validated on the clean VM through `verify-vm.sh` and `verify-endpoint.sh`.
 
 ## Upstream compatibility
 

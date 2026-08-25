@@ -11,9 +11,9 @@ usage() {
 Usage: ./verify-vm.sh [--root PATH] [--skip-core]
 
 Checks repository layout, portable memory, cross-component configuration,
-Backtalk core selection, a headless agent turn, and the visualizer state
-endpoint. The headless core test requires provider authentication but does not
-require audio hardware.
+Backtalk core selection, a headless agent turn, remote endpoint assets, and the
+visualizer state endpoint. The headless core test requires provider
+authentication but does not require audio hardware.
 EOF
 }
 
@@ -110,6 +110,12 @@ else
   bad "Backtalk virtual environment missing"
 fi
 
+if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.endpoint_server --self-test); then
+  pass "remote endpoint server and PWA assets ready"
+else
+  bad "remote endpoint self-test failed"
+fi
+
 if (cd "$ROOT/backtalk" && .venv/bin/python -m backtalk.core_probe --check); then
   pass "selected core starts"
 else
@@ -160,8 +166,8 @@ trap - EXIT
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then
-  echo "VERIFIED: software stack, memory wiring, and selected core are ready."
-  echo "Full voice still requires microphone and speaker devices inside the VM."
+  echo "VERIFIED: software stack, memory wiring, selected core, and remote endpoint assets are ready."
+  echo "VM microphone and speaker devices are optional. Run verify-endpoint.sh for the full remote voice loop."
   exit 0
 else
   echo "NOT READY: one or more checks failed."
