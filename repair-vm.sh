@@ -4,12 +4,15 @@
 set -euo pipefail
 
 ROOT="$HOME/universal-agent"
+BACKTALK_REF="main"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root) ROOT="${2:?missing path}"; shift 2 ;;
+    --backtalk-ref) BACKTALK_REF="${2:?missing ref}"; shift 2 ;;
     -h|--help)
-      echo "Usage: ./repair-vm.sh [--root PATH]"
+      echo "Usage: ./repair-vm.sh [--root PATH] [--backtalk-ref REF]"
+      echo "Default Backtalk ref: main"
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -25,22 +28,28 @@ for repo in fullstack-agent backtalk; do
   fi
 done
 
-echo "== updating stable Backtalk main =="
+echo "== updating Backtalk $BACKTALK_REF =="
 # Older Universal Agent installs cloned only the development branch with
-# --single-branch. Their remote.origin.fetch refspec therefore tracks only
-# that one branch. Merely creating refs/remotes/origin/main is insufficient:
-# Git still refuses to treat origin/main as an upstream branch. Normalize the
-# origin refspec to a normal all-branches mapping first, then fetch and migrate.
+# --single-branch. Normalize origin to track all branches before selecting the
+# requested release or integration ref.
 git -C "$ROOT/backtalk" config --replace-all \
   remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
 git -C "$ROOT/backtalk" fetch --prune origin
-if git -C "$ROOT/backtalk" show-ref --verify --quiet refs/heads/main; then
-  git -C "$ROOT/backtalk" checkout main
-else
-  git -C "$ROOT/backtalk" checkout -b main --track origin/main
+if ! git -C "$ROOT/backtalk" show-ref --verify --quiet \
+    "refs/remotes/origin/$BACKTALK_REF"; then
+  echo "Backtalk ref not found on origin: $BACKTALK_REF" >&2
+  exit 1
 fi
-git -C "$ROOT/backtalk" branch --set-upstream-to=origin/main main >/dev/null
-git -C "$ROOT/backtalk" merge --ff-only origin/main
+if git -C "$ROOT/backtalk" show-ref --verify --quiet \
+    "refs/heads/$BACKTALK_REF"; then
+  git -C "$ROOT/backtalk" checkout "$BACKTALK_REF"
+else
+  git -C "$ROOT/backtalk" checkout -b "$BACKTALK_REF" \
+    --track "origin/$BACKTALK_REF"
+fi
+git -C "$ROOT/backtalk" branch \
+  --set-upstream-to="origin/$BACKTALK_REF" "$BACKTALK_REF" >/dev/null
+git -C "$ROOT/backtalk" merge --ff-only "origin/$BACKTALK_REF"
 
 AGENTS="$ROOT/AGENTS.md"
 if [ ! -f "$AGENTS" ]; then
@@ -147,10 +156,20 @@ identity.setdefault("name", cfg.get("name") or "Assistant")
 identity["file"] = "identity/IDENTITY.md"
 identity["principles_file"] = "identity/OPERATING_PRINCIPLES.md"
 shell["identity"] = identity
+
+# Seed per-provider profiles from the currently active Backtalk core so a
+# later swap can return to this exact provider configuration.
+profiles = dict(shell.get("core_profiles") or {})
+active_core = dict(cfg.get("core") or {})
+active_provider = str(active_core.get("provider") or "").strip()
+if active_provider:
+    profiles[active_provider] = active_core
+shell["core_profiles"] = profiles
 shell_path.write_text(json.dumps(shell, indent=2) + "\n")
 PY
 
 echo "== repair complete =="
+echo "Backtalk: $BACKTALK_REF"
 echo "Identity: $ROOT/identity/IDENTITY.md"
 echo "Status:   $ROOT/fullstack-agent/agentctl.py --root $ROOT status"
 echo "Verify:   $ROOT/fullstack-agent/verify-vm.sh --root $ROOT"
