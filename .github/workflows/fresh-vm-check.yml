@@ -2,7 +2,7 @@ name: fresh-vm-check
 
 on:
   push:
-    branches: [universal-core-architecture]
+    branches: [main, identity-memory-v1.1]
   pull_request:
 
 jobs:
@@ -11,15 +11,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh endpoint.sh cpu-preflight.sh start.sh update.sh
+        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh verify-memory.sh endpoint.sh cpu-preflight.sh start.sh update.sh
       - name: Operator scripts executable
         run: |
           test -x repair-vm.sh
           test -x cpu-preflight.sh
           test -x verify-endpoint.sh
+          test -x verify-memory.sh
           test -x endpoint.sh
+          test -x agentctl.py
       - name: Python syntax
-        run: python -m py_compile corectl.py
+        run: python -m py_compile corectl.py agentctl.py
+      - name: Verify identity rename synchronization
+        run: |
+          root="$(mktemp -d)"
+          mkdir -p "$root/identity" "$root/backtalk" "$root/ai-visualizer" "$root/barehands"
+          cp templates/identity/IDENTITY.md "$root/identity/IDENTITY.md"
+          cp templates/identity/OPERATING_PRINCIPLES.md "$root/identity/OPERATING_PRINCIPLES.md"
+          printf '%s\n' '{"name":"Assistant","core":{"provider":"codex"}}' > "$root/backtalk/backtalk.json"
+          printf '%s\n' '{"name":"Assistant"}' > "$root/ai-visualizer/ai-visualizer.json"
+          printf '%s\n' '{"name":"Assistant"}' > "$root/barehands/barehands.json"
+          printf '%s\n' '{"agent_dir":"/tmp","core":{"provider":"codex"}}' > "$root/fullstack-agent.json"
+          ./agentctl.py --root "$root" identity set-name Nova
+          ROOT="$root" python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          root = Path(os.environ["ROOT"])
+          text = (root / "identity/IDENTITY.md").read_text()
+          assert re.search(r"(?m)^Name: Nova$", text)
+          assert json.loads((root / "backtalk/backtalk.json").read_text())["name"] == "Nova"
+          assert json.loads((root / "ai-visualizer/ai-visualizer.json").read_text())["name"] == "Nova"
+          assert json.loads((root / "barehands/barehands.json").read_text())["name"] == "Nova"
+          shell = json.loads((root / "fullstack-agent.json").read_text())
+          assert shell["identity"]["name"] == "Nova"
+          assert shell["identity"]["file"] == "identity/IDENTITY.md"
+          PY
       - name: Validate shell config example
         run: python -m json.tool config/fullstack-agent.example.json >/dev/null
       - name: Validate portable memory templates
@@ -27,8 +53,19 @@ jobs:
           test -s templates/portable-memory/VAULT-INDEX.md
           test -s 'templates/portable-memory/Active Priorities.md'
           test -s 'templates/portable-memory/Daily Note Template.md'
+      - name: Validate portable identity templates
+        run: |
+          test -s templates/identity/IDENTITY.md
+          test -s templates/identity/OPERATING_PRINCIPLES.md
+          grep -q '^Name:' templates/identity/IDENTITY.md
       - name: Validate endpoint operator docs
         run: |
           test -s REMOTE_ENDPOINT.md
           grep -q 'REMOTE_ENDPOINT_VERIFIED' verify-endpoint.sh
           grep -q 'tailscale serve --bg' endpoint.sh
+      - name: Validate durability semantics
+        run: |
+          grep -q 'MEMORY_DURABILITY_VERIFIED' verify-memory.sh
+          grep -q 'identity/IDENTITY.md' repair-vm.sh
+          grep -Fq "remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'" repair-vm.sh
+          grep -q 'fetch --prune origin' repair-vm.sh

@@ -6,7 +6,21 @@ This repository is the shell and integration layer for a portable personal agent
 
 The shell owns identity, memory integration, voice, visual state, launch/update behavior, and safety policy. The AI runtime is a replaceable core selected through configuration.
 
-Never make a provider-specific instruction file the source of truth. `AGENTS.md` is canonical. Provider files such as `CLAUDE.md` are compatibility shims only.
+Never make a provider-specific instruction file the source of truth. `AGENTS.md` is the portable constitution. Runtime identity lives under `identity/`, durable knowledge lives under `memory/`, and provider files such as `CLAUDE.md` are compatibility shims only.
+
+## State hierarchy
+
+Keep these layers distinct:
+
+1. `AGENTS.md`: portable constitution and startup protocol.
+2. `identity/`: name, role, self-description, and operating principles.
+3. `memory/`: durable facts, decisions, lessons, and project state.
+4. Provider session state: disposable conversation acceleration only.
+5. Core: replaceable reasoning/tool runtime.
+6. Host: replaceable compute location.
+7. Endpoint: replaceable human I/O device.
+
+Provider-session loss must never imply identity or memory loss.
 
 ## Core contract
 
@@ -35,7 +49,7 @@ Adapters translate these into provider-specific values.
 
 ## Core independence
 
-Do not couple the visualizer, speech recognition, TTS, Barehands, memory layout, or state bus to a specific model vendor or harness.
+Do not couple identity, the visualizer, speech recognition, TTS, Barehands, memory layout, or the state bus to a specific model vendor or harness.
 
 Provider-specific code belongs under `cores/<provider>/` or in a component-level adapter package.
 

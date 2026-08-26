@@ -9,6 +9,8 @@ AGENT_NAME="Assistant"
 INSTALL_MODELS=1
 INSTALL_SYSTEM=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHELL_BRANCH="${FULLSTACK_AGENT_BRANCH:-main}"
+BACKTALK_BRANCH="${BACKTALK_BRANCH:-main}"
 
 usage() {
   cat <<'EOF'
@@ -21,6 +23,9 @@ Options:
   --no-models             Skip Whisper/Kokoro model prefetch
   --skip-system-packages  Do not run apt-get
   -h, --help              Show this help
+
+Stable installs use main for Fullstack Agent and Backtalk. Developers may
+override FULLSTACK_AGENT_BRANCH or BACKTALK_BRANCH in the environment.
 EOF
 }
 
@@ -57,7 +62,7 @@ if [ "$INSTALL_SYSTEM" -eq 1 ]; then
   fi
 fi
 
-# User-local official standalone binaries must win over distro/snap shims.
+# User-local official binaries must win over distro or snap shims.
 export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 if ! command -v uv >/dev/null 2>&1; then
@@ -72,7 +77,7 @@ uv python install 3.12
 sync_repo() {
   local url="$1" dir="$2" branch="$3"
   if [ -d "$dir/.git" ]; then
-    echo "== updating $(basename "$dir") =="
+    echo "== updating $(basename "$dir") [$branch] =="
     git -C "$dir" fetch origin "$branch"
     git -C "$dir" checkout "$branch"
     git -C "$dir" pull --ff-only origin "$branch"
@@ -80,23 +85,23 @@ sync_repo() {
     echo "Refusing to replace non-git path: $dir" >&2
     exit 1
   else
-    echo "== cloning $(basename "$dir") =="
+    echo "== cloning $(basename "$dir") [$branch] =="
     git clone --branch "$branch" --single-branch "$url" "$dir"
   fi
 }
 
-# Avoid updating the script underneath itself. If bootstrap is being run from
-# the intended checkout, use it as-is. If it was launched from another clone,
-# create or update the working checkout under ROOT.
+# Do not update the script underneath itself. A fresh external invocation gets
+# the stable shell checkout under ROOT; an invocation from that checkout uses
+# the currently checked out shell revision.
 if [ "$SCRIPT_DIR" = "$ROOT/fullstack-agent" ]; then
   echo "== fullstack-agent: using current checkout =="
 else
   sync_repo "https://github.com/st00pidctl/fullstack-agent.git" \
-    "$ROOT/fullstack-agent" "universal-core-architecture"
+    "$ROOT/fullstack-agent" "$SHELL_BRANCH"
 fi
 
 sync_repo "https://github.com/st00pidctl/backtalk.git" \
-  "$ROOT/backtalk" "universal-core-architecture"
+  "$ROOT/backtalk" "$BACKTALK_BRANCH"
 sync_repo "https://github.com/jaredrhod/ai-memory-vault.git" \
   "$ROOT/ai-memory-vault" "main"
 sync_repo "https://github.com/jaredrhod/ai-visualizer.git" \
@@ -105,10 +110,6 @@ sync_repo "https://github.com/jaredrhod/barehands.git" \
   "$ROOT/barehands" "main"
 
 if [ "$PROVIDER" = "codex" ]; then
-  # Always install/update through OpenAI's official standalone installer.
-  # Do not accept an arbitrary pre-existing `codex` from Snap or another
-  # third-party package as satisfying the runtime requirement. The official
-  # installer manages its package under ~/.codex and exposes ~/.local/bin/codex.
   echo "== installing/updating official OpenAI Codex CLI =="
   curl -fsSL https://chatgpt.com/codex/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
@@ -118,10 +119,9 @@ if [ "$PROVIDER" = "codex" ]; then
   fi
   CODEX_BIN="$(command -v codex)"
   if [ "$CODEX_BIN" != "$HOME/.local/bin/codex" ]; then
-    echo "Codex PATH provenance check failed: expected $HOME/.local/bin/codex, got $CODEX_BIN" >&2
+    echo "Codex provenance check failed: expected $HOME/.local/bin/codex, got $CODEX_BIN" >&2
     exit 1
   fi
-  echo "Codex binary: $CODEX_BIN"
   codex --version
 fi
 
@@ -129,33 +129,30 @@ if [ ! -f "$ROOT/AGENTS.md" ]; then
   cat > "$ROOT/AGENTS.md" <<EOF
 # ${AGENT_NAME}
 
-This directory is the canonical home of ${AGENT_NAME}.
+This directory is the canonical home of the agent.
 
-## Identity ownership
+## Ownership model
 
-AGENTS.md is the portable source of truth for identity and operating rules. Provider-specific instruction files are compatibility shims only.
+The shell owns identity, durable memory, voice integration, endpoint state, and lifecycle. Provider-specific instruction files are compatibility shims only. The reasoning core is replaceable and must never become the source of truth for identity.
+
+## Portable identity protocol
+
+At the start of a new provider session, read \`identity/IDENTITY.md\` and \`identity/OPERATING_PRINCIPLES.md\`. Identity is shell-owned and must not be inferred from the active model, provider, host, or endpoint.
+
+Provider session IDs are disposable acceleration state. If provider-session resume fails, recover from shell-owned identity and portable memory instead of treating the agent as a new identity.
+
+## Portable memory protocol
+
+At the start of a new provider session, read \`memory/VAULT-INDEX.md\`, then \`memory/Active Priorities.md\`. Retrieve other memory only when relevant to the task.
+
+Persist durable decisions, constraints, lessons, and project state under \`memory/\`. Never move canonical memory into a provider-specific directory and never store secrets in portable Markdown memory.
 
 ## Operating model
 
 - Work from this directory unless the user explicitly selects another workspace.
-- Do not make a provider, model vendor, or harness part of the agent's identity.
-- The reasoning core is replaceable. Preserve shell-owned memory, voice, UI, and configuration when the core changes.
 - Prefer reversible actions and inspect before mutating.
-
-## Memory protocol
-
-At the start of a new session, read `memory/VAULT-INDEX.md`, then `memory/Active Priorities.md`. Retrieve other memory only when it is relevant to the task.
-
-Persist durable decisions, constraints, lessons, and project state to the appropriate file under `memory/`. Update an existing note before creating a thin new one when practical. Never move canonical memory into a provider-specific directory, and never store secrets in the memory vault.
-
-## Components
-
-- fullstack-agent: shell, lifecycle, bootstrap, and integration
-- backtalk: voice, speech recognition, TTS, and pluggable reasoning core adapter
-- ai-memory-vault: upstream reference and optional structured-memory tooling
-- ai-visualizer: local face and state viewer
-- barehands: optional camera-driven visual workspace
-- memory: portable shell-owned durable notes
+- Keep provider-specific behavior behind adapters when a portable abstraction exists.
+- Preserve shell-owned identity and memory when cores, endpoints, or hosts change.
 EOF
 fi
 
@@ -172,23 +169,34 @@ mkdir -p \
   "$ROOT/memory/90 - Archive" \
   "$ROOT/memory/99 - Resources"
 MEMORY_TEMPLATES="$ROOT/fullstack-agent/templates/portable-memory"
-if [ ! -f "$ROOT/memory/VAULT-INDEX.md" ]; then
-  cp "$MEMORY_TEMPLATES/VAULT-INDEX.md" "$ROOT/memory/VAULT-INDEX.md"
-fi
-if [ ! -f "$ROOT/memory/Active Priorities.md" ]; then
-  cp "$MEMORY_TEMPLATES/Active Priorities.md" "$ROOT/memory/Active Priorities.md"
-fi
-if [ ! -f "$ROOT/memory/01 - Daily Notes/Daily Note Template.md" ]; then
-  cp "$MEMORY_TEMPLATES/Daily Note Template.md" \
-    "$ROOT/memory/01 - Daily Notes/Daily Note Template.md"
-fi
+[ -f "$ROOT/memory/VAULT-INDEX.md" ] || cp "$MEMORY_TEMPLATES/VAULT-INDEX.md" "$ROOT/memory/VAULT-INDEX.md"
+[ -f "$ROOT/memory/Active Priorities.md" ] || cp "$MEMORY_TEMPLATES/Active Priorities.md" "$ROOT/memory/Active Priorities.md"
+[ -f "$ROOT/memory/01 - Daily Notes/Daily Note Template.md" ] || \
+  cp "$MEMORY_TEMPLATES/Daily Note Template.md" "$ROOT/memory/01 - Daily Notes/Daily Note Template.md"
 if [ ! -f "$ROOT/memory/README.md" ]; then
   cat > "$ROOT/memory/README.md" <<'EOF'
 # Portable memory
 
-This directory belongs to the agent shell, not to any model provider. `VAULT-INDEX.md` is the map and memory policy. The directory is ordinary Markdown and can also be opened as an Obsidian vault if desired.
+This directory belongs to the agent shell, not to any model provider. `VAULT-INDEX.md` is the map and memory policy. The directory is ordinary Markdown and can also be opened as an Obsidian vault.
 EOF
 fi
+
+echo "== provisioning portable identity =="
+mkdir -p "$ROOT/identity"
+IDENTITY_TEMPLATES="$ROOT/fullstack-agent/templates/identity"
+if [ ! -f "$ROOT/identity/IDENTITY.md" ]; then
+  cp "$IDENTITY_TEMPLATES/IDENTITY.md" "$ROOT/identity/IDENTITY.md"
+  python3 - "$ROOT/identity/IDENTITY.md" "$AGENT_NAME" <<'PY'
+import re
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+name = sys.argv[2]
+path.write_text(re.sub(r'(?m)^Name:\s*.*$', f'Name: {name}', path.read_text(), count=1))
+PY
+fi
+[ -f "$ROOT/identity/OPERATING_PRINCIPLES.md" ] || \
+  cp "$IDENTITY_TEMPLATES/OPERATING_PRINCIPLES.md" "$ROOT/identity/OPERATING_PRINCIPLES.md"
 
 python3 - "$ROOT" "$PROVIDER" "$AGENT_NAME" <<'PY'
 import json
@@ -248,9 +256,13 @@ barehands.write_text(json.dumps(bh, indent=2) + "\n")
 
 shell_cfg = root / "fullstack-agent.json"
 shell_cfg.write_text(json.dumps({
-    "version": 2,
+    "version": 3,
     "agent_dir": str(root),
-    "identity_file": "AGENTS.md",
+    "identity": {
+        "name": name,
+        "file": "identity/IDENTITY.md",
+        "principles_file": "identity/OPERATING_PRINCIPLES.md",
+    },
     "memory_dir": str(root / "memory"),
     "core": {"provider": provider},
     "permissions": {"mode": "ask"},
@@ -259,6 +271,7 @@ shell_cfg.write_text(json.dumps({
         "voice": True,
         "visualizer": True,
         "barehands": True,
+        "remote_endpoint": True,
     },
 }, indent=2) + "\n")
 PY
@@ -295,15 +308,13 @@ fi
 printf '\n== bootstrap complete ==\n'
 printf 'agent home: %s\n' "$ROOT"
 printf 'provider:   %s\n' "$PROVIDER"
-printf 'identity:   %s/AGENTS.md\n' "$ROOT"
+printf 'identity:   %s/identity/IDENTITY.md\n' "$ROOT"
 printf 'memory:     %s/memory/VAULT-INDEX.md\n' "$ROOT"
 printf '\nNext:\n'
 if [ "$PROVIDER" = "codex" ]; then
-  echo "  1. On a headless VM, run: codex login --device-auth"
-  echo "     On a desktop VM, plain codex login is also fine."
-  echo "  2. Run the verifier after authentication."
+  echo "  1. Authenticate the official CLI: codex login --device-auth"
 fi
-printf '  Run: %s/fullstack-agent/verify-vm.sh --root %q\n' "$ROOT" "$ROOT"
-printf '  Then: cd %q && ./fullstack-agent/start.sh\n' "$ROOT"
-printf '\nVM note: full voice needs a microphone and audio output visible inside the VM.\n'
-printf 'A headless VM can still run the core smoke test and visualizer through an SSH tunnel.\n'
+printf '  2. Verify: %s/fullstack-agent/verify-vm.sh --root %q\n' "$ROOT" "$ROOT"
+printf '  3. Verify remote voice: %s/fullstack-agent/verify-endpoint.sh --root %q\n' "$ROOT" "$ROOT"
+printf '  4. Start private endpoint: cd %q && ./fullstack-agent/endpoint.sh start --tailscale\n' "$ROOT"
+printf '\nHeadless mode is first-class: the browser endpoint supplies microphone and speaker hardware.\n'
