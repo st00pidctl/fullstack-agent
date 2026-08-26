@@ -27,11 +27,13 @@ done
 
 echo "== updating stable Backtalk main =="
 # Older Universal Agent installs cloned only the development branch with
-# --single-branch. In that layout `git fetch origin main` populates FETCH_HEAD
-# but does not necessarily create origin/main. Fetch main into the remote-
-# tracking namespace explicitly, then create the local tracking branch when
-# this is the first migration to the stable channel.
-git -C "$ROOT/backtalk" fetch origin main:refs/remotes/origin/main
+# --single-branch. Their remote.origin.fetch refspec therefore tracks only
+# that one branch. Merely creating refs/remotes/origin/main is insufficient:
+# Git still refuses to treat origin/main as an upstream branch. Normalize the
+# origin refspec to a normal all-branches mapping first, then fetch and migrate.
+git -C "$ROOT/backtalk" config --replace-all \
+  remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git -C "$ROOT/backtalk" fetch --prune origin
 if git -C "$ROOT/backtalk" show-ref --verify --quiet refs/heads/main; then
   git -C "$ROOT/backtalk" checkout main
 else
