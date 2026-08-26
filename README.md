@@ -45,9 +45,10 @@ Ubuntu 24.04 LTS is the primary clean-room target. The bootstrap uses a managed 
 ```bash
 mkdir -p ~/universal-agent
 cd ~/universal-agent
-git clone --branch universal-core-architecture https://github.com/st00pidctl/fullstack-agent.git
+git clone --branch main https://github.com/st00pidctl/fullstack-agent.git
 cd fullstack-agent
-./bootstrap-vm.sh --provider codex --name Assistant
+./bootstrap-vm.sh --provider codex --name Assistant \
+  --memory-domains "Personal,Work,Project Name"
 ```
 
 On a headless VM, authenticate Codex with:
@@ -99,7 +100,7 @@ See `REMOTE_ENDPOINT.md` for lifecycle, systemd, security, and capacity details.
 
 ## Portable memory
 
-The bootstrap provisions a provider-neutral Markdown vault under `memory/`:
+The bootstrap provisions a provider-neutral Markdown vault and a shell-owned SQLite memory graph under `memory/`:
 
 ```text
 memory/
@@ -110,11 +111,35 @@ memory/
     Daily Note Template.md
   90 - Archive/
   99 - Resources/
+  memory.db
 ```
 
 `AGENTS.md` tells every core to read the vault index and active priorities at session start, then retrieve other notes only when relevant. The memory directory can also be opened directly as an Obsidian vault, but Obsidian is not required for the agent to use it.
 
 The upstream `ai-memory-vault` repository is still cloned as reference and optional tooling, but its Claude-era bootstrap is no longer allowed to own canonical identity or memory.
+
+Structured memory is governed by `architecture/MEMORY_CONTRACT.md`. Domains are explicit operator configuration in `config/memory-domains.txt`; there is no invented or catch-all domain. Bootstrap accepts `--memory-domains` for a deliberate initial set. Later edits are synchronized with:
+
+```bash
+python3 fullstack-agent/memoryctl.py runtime-init --root ~/universal-agent
+python3 fullstack-agent/memoryctl.py domain sync config/memory-domains.txt
+python3 fullstack-agent/memoryctl.py domain list
+python3 fullstack-agent/memoryctl.py audit status
+```
+
+Claims remain candidates until verified with exactly one active primary domain. Consequential use must pass `memoryctl.py gate` first. Corrections supersede prior claims without erasing history, and audits cover candidates, contradictions, stale claims, domain questions, and inferred relationships.
+
+To adopt the graph on an existing VM without replacing identity or Markdown memory:
+
+```bash
+cd ~/universal-agent/fullstack-agent
+git pull --ff-only
+./repair-vm.sh --root ~/universal-agent \
+  --memory-domains "Personal,Work,Project Name"
+./verify-memory-graph.py --root ~/universal-agent
+```
+
+Replace the example names with the exact domains you intend to enforce. A successful independent check ends with `MEMORY_GRAPH_VERIFIED`.
 
 ## Switch cores
 
@@ -145,7 +170,7 @@ Backtalk includes `examples/custom_core.py` as the reference contract.
 ## Components
 
 - **Shell and lifecycle:** this repository
-- **Voice, endpoint server, and core adapter layer:** `st00pidctl/backtalk`, branch `universal-core-architecture`
+- **Voice, endpoint server, and core adapter layer:** `st00pidctl/backtalk`, branch `main`
 - **Portable memory:** shell-owned `memory/`
 - **Memory reference/tooling:** Jared Rhodenizer's `ai-memory-vault`
 - **Face:** Jared Rhodenizer's `ai-visualizer`, core-neutral

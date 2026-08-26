@@ -56,6 +56,21 @@ class MemoryEngineTests(unittest.TestCase):
         self.engine.verify_memory(memory_id, primary_domain="Personal")
         self.assertEqual(self.engine.get_memory(memory_id)["status"], "verified")
 
+    def test_domain_sync_retires_missing_domains_and_gate_blocks_them(self):
+        memory_id = self.add_candidate()
+        self.engine.verify_memory(memory_id)
+        self.assertTrue(self.engine.point_of_use_gate([memory_id]).allowed)
+
+        self.engine.sync_domains(["Project"])
+        self.assertEqual(self.engine.list_domains(), ["Project"])
+        gate = self.engine.point_of_use_gate([memory_id])
+        self.assertFalse(gate.allowed)
+        self.assertIn(f"{memory_id}:domain_inactive", gate.reasons)
+
+    def test_domain_sync_rejects_an_empty_configuration(self):
+        with self.assertRaises(ValueError):
+            self.engine.sync_domains([])
+
     def test_correction_preserves_history(self):
         old_id = self.add_candidate("Old statement")
         self.engine.verify_memory(old_id)
@@ -67,6 +82,15 @@ class MemoryEngineTests(unittest.TestCase):
         self.assertEqual(new["status"], "verified")
         self.assertEqual(new["source_type"], "user_correction")
         self.assertEqual(new["supersedes_id"], old_id)
+
+        with self.assertRaises(ValueError):
+            self.engine.verify_memory(old_id)
+
+    def test_correction_rejects_an_empty_replacement(self):
+        old_id = self.add_candidate("Old statement")
+        self.engine.verify_memory(old_id)
+        with self.assertRaises(ValueError):
+            self.engine.supersede_memory(old_id, "   ")
 
     def test_contradicting_evidence_disputes_memory(self):
         memory_id = self.add_candidate()

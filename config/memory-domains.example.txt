@@ -1,0 +1,11 @@
+# Define one exact primary memory domain per line.
+#
+# Copy this file to <agent-root>/config/memory-domains.txt, remove the leading
+# comment markers from the domains you intentionally choose, and add any other
+# explicit domains your agent needs. Domain names are operator-owned. The
+# engine will not invent a domain and there is deliberately no "other" bucket.
+#
+# Example only:
+# Personal
+# Work
+# Project Name
