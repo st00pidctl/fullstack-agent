@@ -2,7 +2,7 @@ name: fresh-vm-check
 
 on:
   push:
-    branches: [main, identity-memory-v1.1]
+    branches: [main, identity-memory-v1.1, memory-graph-v1.2]
   pull_request:
 
 jobs:
@@ -21,7 +21,9 @@ jobs:
           test -x endpoint.sh
           test -x agentctl.py
       - name: Python syntax
-        run: python -m py_compile corectl.py agentctl.py
+        run: python -m py_compile corectl.py agentctl.py memory_engine.py memoryctl.py
+      - name: Memory graph unit tests
+        run: python -m unittest discover -s tests -v
       - name: Verify identity rename synchronization
         run: |
           root="$(mktemp -d)"
@@ -53,6 +55,13 @@ jobs:
           test -s templates/portable-memory/VAULT-INDEX.md
           test -s 'templates/portable-memory/Active Priorities.md'
           test -s 'templates/portable-memory/Daily Note Template.md'
+      - name: Validate evidence based memory contract
+        run: |
+          test -s architecture/MEMORY_CONTRACT.md
+          test -s memory/schema.sql
+          grep -q 'exactly one primary domain' architecture/MEMORY_CONTRACT.md
+          grep -q 'UNRESOLVED_CANDIDATE_TRIGGER = 20' memory_engine.py
+          grep -q 'HIGH_IMPACT_TRIGGER = 5' memory_engine.py
       - name: Validate portable identity templates
         run: |
           test -s templates/identity/IDENTITY.md

@@ -14,13 +14,34 @@ Keep these layers distinct:
 
 1. `AGENTS.md`: portable constitution and startup protocol.
 2. `identity/`: name, role, self-description, and operating principles.
-3. `memory/`: durable facts, decisions, lessons, and project state.
+3. `memory/`: durable facts, decisions, lessons, project state, and the shell-owned memory graph.
 4. Provider session state: disposable conversation acceleration only.
 5. Core: replaceable reasoning/tool runtime.
 6. Host: replaceable compute location.
 7. Endpoint: replaceable human I/O device.
 
 Provider-session loss must never imply identity or memory loss.
+
+## Evidence based memory
+
+`architecture/MEMORY_CONTRACT.md` is the canonical behavioral contract for durable memory.
+
+Memory rules include:
+
+- canonical memory units are atomic claims
+- evidence and provenance are retained separately from the claim
+- confidence, relevance, freshness, and domain confidence are separate values
+- every verified durable claim has exactly one primary domain
+- every stored relationship has exactly one primary domain
+- domains are explicit configuration and are never silently invented
+- assumptions and inferred relationships remain visibly unverified until confirmed
+- corrections preserve history by superseding rather than silently rewriting old claims
+- creation-time verification and point-of-use verification are both required
+- audits include candidates, contradictions, stale claims, domain questions, and inferred relationships
+- periodic review occurs weekly, with additional quantity triggers at 20 unresolved candidates or 5 high-impact or contradictory items
+- consequential actions must not rely silently on unresolved memory
+
+Graph connectivity can affect relevance and retrieval, but graph density must never be treated as proof.
 
 ## Core contract
 
@@ -52,6 +73,8 @@ Adapters translate these into provider-specific values.
 Do not couple identity, the visualizer, speech recognition, TTS, Barehands, memory layout, or the state bus to a specific model vendor or harness.
 
 Provider-specific code belongs under `cores/<provider>/` or in a component-level adapter package.
+
+Codex is the active core for the current customization phase. Future core portability remains an architectural requirement, not a current milestone.
 
 ## Compatibility
 
