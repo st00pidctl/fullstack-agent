@@ -100,4 +100,4 @@ jobs:
           grep -Fq "remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'" repair-vm.sh
           grep -q -- '--backtalk-ref' repair-vm.sh
           grep -q 'https://claude.ai/install.sh' corectl.py
-          grep -q 'claude.*auth.*status' corectl.py
+          grep -Fq '"auth", "status", "--text"' corectl.py
