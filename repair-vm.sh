@@ -26,9 +26,19 @@ for repo in fullstack-agent backtalk; do
 done
 
 echo "== updating stable Backtalk main =="
-git -C "$ROOT/backtalk" fetch origin main
-git -C "$ROOT/backtalk" checkout main
-git -C "$ROOT/backtalk" pull --ff-only origin main
+# Older Universal Agent installs cloned only the development branch with
+# --single-branch. In that layout `git fetch origin main` populates FETCH_HEAD
+# but does not necessarily create origin/main. Fetch main into the remote-
+# tracking namespace explicitly, then create the local tracking branch when
+# this is the first migration to the stable channel.
+git -C "$ROOT/backtalk" fetch origin main:refs/remotes/origin/main
+if git -C "$ROOT/backtalk" show-ref --verify --quiet refs/heads/main; then
+  git -C "$ROOT/backtalk" checkout main
+else
+  git -C "$ROOT/backtalk" checkout -b main --track origin/main
+fi
+git -C "$ROOT/backtalk" branch --set-upstream-to=origin/main main >/dev/null
+git -C "$ROOT/backtalk" merge --ff-only origin/main
 
 AGENTS="$ROOT/AGENTS.md"
 if [ ! -f "$AGENTS" ]; then
