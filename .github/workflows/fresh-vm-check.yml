@@ -67,4 +67,5 @@ jobs:
         run: |
           grep -q 'MEMORY_DURABILITY_VERIFIED' verify-memory.sh
           grep -q 'identity/IDENTITY.md' repair-vm.sh
-          grep -q 'git -C "$ROOT/backtalk" fetch origin main' repair-vm.sh
+          grep -Fq "remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'" repair-vm.sh
+          grep -q 'fetch --prune origin' repair-vm.sh
