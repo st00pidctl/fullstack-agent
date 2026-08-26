@@ -123,6 +123,20 @@ if [ "$PROVIDER" = "codex" ]; then
     exit 1
   fi
   codex --version
+elif [ "$PROVIDER" = "claude" ]; then
+  echo "== installing/updating official Anthropic Claude Code =="
+  curl -fsSL https://claude.ai/install.sh | bash
+  export PATH="$HOME/.local/bin:$PATH"
+  if [ ! -x "$HOME/.local/bin/claude" ]; then
+    echo "Official Claude installer did not create $HOME/.local/bin/claude" >&2
+    exit 1
+  fi
+  CLAUDE_BIN="$(command -v claude)"
+  if [ "$CLAUDE_BIN" != "$HOME/.local/bin/claude" ]; then
+    echo "Claude provenance check failed: expected $HOME/.local/bin/claude, got $CLAUDE_BIN" >&2
+    exit 1
+  fi
+  claude --version
 fi
 
 if [ ! -f "$ROOT/AGENTS.md" ]; then
@@ -233,6 +247,11 @@ if provider == "codex":
     core.setdefault("extra_args", [])
     cfg["model"] = ""
     cfg["deep_model"] = ""
+elif provider == "claude":
+    core["binary"] = str(Path.home() / ".local/bin/claude")
+    core.setdefault("model", "")
+    cfg["model"] = ""
+    cfg["deep_model"] = ""
 elif provider == "generic-cli":
     core.setdefault("command", [str(root / "core-wrapper")])
     core.setdefault("timeout_seconds", 300)
@@ -265,6 +284,7 @@ shell_cfg.write_text(json.dumps({
     },
     "memory_dir": str(root / "memory"),
     "core": {"provider": provider},
+    "core_profiles": {provider: core},
     "permissions": {"mode": "ask"},
     "components": {
         "memory": True,
@@ -313,6 +333,8 @@ printf 'memory:     %s/memory/VAULT-INDEX.md\n' "$ROOT"
 printf '\nNext:\n'
 if [ "$PROVIDER" = "codex" ]; then
   echo "  1. Authenticate the official CLI: codex login --device-auth"
+elif [ "$PROVIDER" = "claude" ]; then
+  echo "  1. Authenticate the official CLI: claude auth login"
 fi
 printf '  2. Verify: %s/fullstack-agent/verify-vm.sh --root %q\n' "$ROOT" "$ROOT"
 printf '  3. Verify remote voice: %s/fullstack-agent/verify-endpoint.sh --root %q\n' "$ROOT" "$ROOT"
