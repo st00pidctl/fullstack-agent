@@ -2,7 +2,7 @@ name: fresh-vm-check
 
 on:
   push:
-    branches: [main, identity-memory-v1.1]
+    branches: [main, core-swap-v1.2]
   pull_request:
 
 jobs:
@@ -11,15 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh verify-memory.sh endpoint.sh cpu-preflight.sh start.sh update.sh
+        run: bash -n bootstrap-vm.sh repair-vm.sh verify-vm.sh verify-endpoint.sh verify-memory.sh verify-core-swap.sh endpoint.sh cpu-preflight.sh start.sh update.sh
       - name: Operator scripts executable
         run: |
           test -x repair-vm.sh
           test -x cpu-preflight.sh
           test -x verify-endpoint.sh
           test -x verify-memory.sh
+          test -x verify-core-swap.sh
           test -x endpoint.sh
           test -x agentctl.py
+          test -x corectl.py
       - name: Python syntax
         run: python -m py_compile corectl.py agentctl.py
       - name: Verify identity rename synchronization
@@ -46,6 +48,32 @@ jobs:
           assert shell["identity"]["name"] == "Nova"
           assert shell["identity"]["file"] == "identity/IDENTITY.md"
           PY
+      - name: Verify provider profiles survive a round trip
+        run: |
+          root="$(mktemp -d)"
+          mkdir -p "$root/backtalk" "$root/identity" "$root/memory"
+          printf '%s\n' '{"core":{"provider":"codex"},"identity":{"name":"Nova"}}' > "$root/fullstack-agent.json"
+          printf '%s\n' '{"name":"Nova","model":"","deep_model":"","core":{"provider":"codex","binary":"/opt/official/codex","model":"gpt-test","extra_args":["--flag"]}}' > "$root/backtalk/backtalk.json"
+          printf '%s\n' 'Name: Nova' > "$root/identity/IDENTITY.md"
+          printf '%s\n' '# Principles' > "$root/identity/OPERATING_PRINCIPLES.md"
+          before="$(sha256sum "$root/identity/IDENTITY.md" "$root/identity/OPERATING_PRINCIPLES.md" | sha256sum)"
+          ./corectl.py --root "$root" use claude
+          ./corectl.py --root "$root" use codex
+          after="$(sha256sum "$root/identity/IDENTITY.md" "$root/identity/OPERATING_PRINCIPLES.md" | sha256sum)"
+          test "$before" = "$after"
+          ROOT="$root" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["ROOT"])
+          shell = json.loads((root / "fullstack-agent.json").read_text())
+          backtalk = json.loads((root / "backtalk/backtalk.json").read_text())
+          assert shell["core"]["provider"] == "codex"
+          assert set(shell["core_profiles"]) >= {"codex", "claude"}
+          assert shell["core_profiles"]["codex"]["binary"] == "/opt/official/codex"
+          assert shell["core_profiles"]["codex"]["model"] == "gpt-test"
+          assert backtalk["core"]["binary"] == "/opt/official/codex"
+          assert backtalk["core"]["model"] == "gpt-test"
+          PY
       - name: Validate shell config example
         run: python -m json.tool config/fullstack-agent.example.json >/dev/null
       - name: Validate portable memory templates
@@ -63,9 +91,13 @@ jobs:
           test -s REMOTE_ENDPOINT.md
           grep -q 'REMOTE_ENDPOINT_VERIFIED' verify-endpoint.sh
           grep -q 'tailscale serve --bg' endpoint.sh
-      - name: Validate durability semantics
+      - name: Validate portability semantics
         run: |
           grep -q 'MEMORY_DURABILITY_VERIFIED' verify-memory.sh
+          grep -q 'CORE_SWAP_VERIFIED' verify-core-swap.sh
+          grep -q 'CORE_SWITCH_COMMITTED' corectl.py
           grep -q 'identity/IDENTITY.md' repair-vm.sh
           grep -Fq "remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'" repair-vm.sh
-          grep -q 'fetch --prune origin' repair-vm.sh
+          grep -q -- '--backtalk-ref' repair-vm.sh
+          grep -q 'https://claude.ai/install.sh' corectl.py
+          grep -q 'claude.*auth.*status' corectl.py
