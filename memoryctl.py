@@ -5,12 +5,72 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 from memory_engine import MemoryEngine
 
 
 DEFAULT_DB = Path.home() / "universal-agent" / "memory" / "memory.db"
+DEFAULT_ROOT = Path.home() / "universal-agent"
+
+
+def read_domain_file(path: str | Path) -> list[str]:
+    source = Path(path).expanduser()
+    domains: list[str] = []
+    for line in source.read_text(encoding="utf-8").splitlines():
+        value = line.split("#", 1)[0].strip()
+        if value:
+            domains.append(value)
+    return domains
+
+
+def parse_domain_csv(value: str) -> list[str]:
+    domains: list[str] = []
+    seen: set[str] = set()
+    for item in value.split(","):
+        domain = item.strip()
+        if domain and domain not in seen:
+            domains.append(domain)
+            seen.add(domain)
+    if not domains:
+        raise ValueError("--domains must contain at least one explicit domain")
+    return domains
+
+
+def initialize_runtime(root: str | Path, domains_csv: str | None = None) -> dict:
+    agent_root = Path(root).expanduser().resolve()
+    memory_dir = agent_root / "memory"
+    config_dir = agent_root / "config"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    domain_file = config_dir / "memory-domains.txt"
+    if not domain_file.exists():
+        template = Path(__file__).resolve().parent / "config" / "memory-domains.example.txt"
+        shutil.copyfile(template, domain_file)
+
+    if domains_csv is not None:
+        configured = parse_domain_csv(domains_csv)
+        domain_file.write_text("\n".join(configured) + "\n", encoding="utf-8")
+    else:
+        configured = read_domain_file(domain_file)
+
+    db = memory_dir / "memory.db"
+    engine = MemoryEngine(db)
+    engine.initialize()
+    if configured:
+        active = engine.sync_domains(configured)
+    else:
+        engine.deactivate_all_domains()
+        active = []
+
+    return {
+        "database": str(db),
+        "domains_file": str(domain_file),
+        "active_domains": active,
+        "ready": bool(active),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,11 +80,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("init", help="Initialize the memory database")
 
+    runtime = sub.add_parser(
+        "runtime-init", help="Idempotently initialize the shell-owned runtime store"
+    )
+    runtime.add_argument("--root", default=str(DEFAULT_ROOT))
+    runtime.add_argument("--domains", help="Explicit comma-separated active domains")
+
     domain = sub.add_parser("domain", help="Manage explicit memory domains")
     domain_sub = domain.add_subparsers(dest="domain_command", required=True)
     domain_add = domain_sub.add_parser("add")
     domain_add.add_argument("name")
     domain_sub.add_parser("list")
+    domain_sync = domain_sub.add_parser(
+        "sync", help="Replace the active domain set from an explicit text file"
+    )
+    domain_sync.add_argument("path")
 
     add = sub.add_parser("add", help="Add an atomic candidate claim")
     add.add_argument("claim")
@@ -108,6 +178,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+
+    if args.command == "runtime-init":
+        print(json.dumps(initialize_runtime(args.root, args.domains), indent=2))
+        return 0
+
     engine = MemoryEngine(args.db)
 
     if args.command == "init":
@@ -119,8 +194,11 @@ def main() -> int:
         if args.domain_command == "add":
             engine.add_domain(args.name)
             print(json.dumps({"domain_added": args.name}, indent=2))
-        else:
+        elif args.domain_command == "list":
             print(json.dumps({"domains": engine.list_domains()}, indent=2))
+        else:
+            domains = engine.sync_domains(read_domain_file(args.path))
+            print(json.dumps({"active_domains": domains}, indent=2))
         return 0
 
     if args.command == "add":

@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT="$HOME/universal-agent"
 PROVIDER="codex"
 AGENT_NAME="Assistant"
+MEMORY_DOMAINS="${FULLSTACK_MEMORY_DOMAINS:-}"
 INSTALL_MODELS=1
 INSTALL_SYSTEM=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +21,7 @@ Options:
   --root PATH             Agent home. Default: ~/universal-agent
   --provider NAME         codex, claude, or generic-cli. Default: codex
   --name NAME             Agent display name. Default: Assistant
+  --memory-domains CSV    Explicit primary memory domains, comma separated
   --no-models             Skip Whisper/Kokoro model prefetch
   --skip-system-packages  Do not run apt-get
   -h, --help              Show this help
@@ -34,6 +36,7 @@ while [ "$#" -gt 0 ]; do
     --root) ROOT="${2:?missing path}"; shift 2 ;;
     --provider) PROVIDER="${2:?missing provider}"; shift 2 ;;
     --name) AGENT_NAME="${2:?missing name}"; shift 2 ;;
+    --memory-domains) MEMORY_DOMAINS="${2:?missing domains}"; shift 2 ;;
     --no-models) INSTALL_MODELS=0; shift ;;
     --skip-system-packages) INSTALL_SYSTEM=0; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -147,6 +150,8 @@ At the start of a new provider session, read \`memory/VAULT-INDEX.md\`, then \`m
 
 Persist durable decisions, constraints, lessons, and project state under \`memory/\`. Never move canonical memory into a provider-specific directory and never store secrets in portable Markdown memory.
 
+The canonical structured store is \`memory/memory.db\`, governed by \`fullstack-agent/architecture/MEMORY_CONTRACT.md\`. Use \`python3 fullstack-agent/memoryctl.py\` to create, verify, correct, relate, gate, and audit atomic claims. A verified claim and every stored relationship must have exactly one active primary domain from \`config/memory-domains.txt\`. Never invent a domain or use a generic catch-all. If classification is uncertain, keep the claim as a candidate and request clarification or queue it for audit. Run the point-of-use gate before consequential work relies on durable memory.
+
 ## Operating model
 
 - Work from this directory unless the user explicitly selects another workspace.
@@ -179,6 +184,14 @@ if [ ! -f "$ROOT/memory/README.md" ]; then
 
 This directory belongs to the agent shell, not to any model provider. `VAULT-INDEX.md` is the map and memory policy. The directory is ordinary Markdown and can also be opened as an Obsidian vault.
 EOF
+fi
+
+echo "== provisioning evidence based memory graph =="
+if [ -n "$MEMORY_DOMAINS" ]; then
+  python3 "$ROOT/fullstack-agent/memoryctl.py" \
+    runtime-init --root "$ROOT" --domains "$MEMORY_DOMAINS"
+else
+  python3 "$ROOT/fullstack-agent/memoryctl.py" runtime-init --root "$ROOT"
 fi
 
 echo "== provisioning portable identity =="
@@ -256,7 +269,7 @@ barehands.write_text(json.dumps(bh, indent=2) + "\n")
 
 shell_cfg = root / "fullstack-agent.json"
 shell_cfg.write_text(json.dumps({
-    "version": 3,
+    "version": 4,
     "agent_dir": str(root),
     "identity": {
         "name": name,
@@ -264,6 +277,11 @@ shell_cfg.write_text(json.dumps({
         "principles_file": "identity/OPERATING_PRINCIPLES.md",
     },
     "memory_dir": str(root / "memory"),
+    "memory_graph": {
+        "database": str(root / "memory" / "memory.db"),
+        "domains_file": str(root / "config" / "memory-domains.txt"),
+        "contract": "fullstack-agent/architecture/MEMORY_CONTRACT.md",
+    },
     "core": {"provider": provider},
     "permissions": {"mode": "ask"},
     "components": {

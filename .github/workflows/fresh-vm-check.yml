@@ -18,10 +18,12 @@ jobs:
           test -x cpu-preflight.sh
           test -x verify-endpoint.sh
           test -x verify-memory.sh
+          test -x verify-memory-graph.py
           test -x endpoint.sh
           test -x agentctl.py
+          test -x memoryctl.py
       - name: Python syntax
-        run: python -m py_compile corectl.py agentctl.py memory_engine.py memoryctl.py
+        run: python -m py_compile corectl.py agentctl.py memory_engine.py memoryctl.py verify-memory-graph.py
       - name: Memory graph unit tests
         run: python -m unittest discover -s tests -v
       - name: Verify identity rename synchronization
@@ -59,9 +61,13 @@ jobs:
         run: |
           test -s architecture/MEMORY_CONTRACT.md
           test -s memory/schema.sql
+          test -s config/memory-domains.example.txt
           grep -q 'exactly one primary domain' architecture/MEMORY_CONTRACT.md
           grep -q 'UNRESOLVED_CANDIDATE_TRIGGER = 20' memory_engine.py
           grep -q 'HIGH_IMPACT_TRIGGER = 5' memory_engine.py
+          grep -q 'runtime-init' bootstrap-vm.sh
+          grep -q 'runtime-init' repair-vm.sh
+          grep -q 'memory/memory.db' verify-vm.sh
       - name: Validate portable identity templates
         run: |
           test -s templates/identity/IDENTITY.md

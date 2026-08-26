@@ -54,7 +54,9 @@ for f in \
   ai-visualizer/ai-visualizer.json \
   identity/IDENTITY.md \
   identity/OPERATING_PRINCIPLES.md \
+  config/memory-domains.txt \
   memory/VAULT-INDEX.md \
+  memory/memory.db \
   "memory/Active Priorities.md" \
   "memory/01 - Daily Notes/Daily Note Template.md"; do
   if [ -f "$ROOT/$f" ]; then pass "$f present"; else bad "$f missing"; fi
@@ -79,6 +81,13 @@ assert backtalk.get("core", {}).get("provider") == provider, \
 assert Path(shell["agent_dir"]).resolve() == root, "shell agent_dir is wrong"
 assert Path(shell["memory_dir"]).resolve() == root / "memory", \
     "shell memory_dir is wrong"
+memory_graph = shell.get("memory_graph") or {}
+assert Path(memory_graph["database"]).resolve() == root / "memory/memory.db", \
+    "memory graph database is wrong"
+assert Path(memory_graph["domains_file"]).resolve() == root / "config/memory-domains.txt", \
+    "memory graph domain configuration is wrong"
+assert memory_graph.get("contract") == "fullstack-agent/architecture/MEMORY_CONTRACT.md", \
+    "memory graph contract path is wrong"
 identity = shell.get("identity") or {}
 assert identity.get("file") == "identity/IDENTITY.md", \
     "portable identity file is not configured"
@@ -102,6 +111,20 @@ then
   pass "identity, configuration, and cross-component wiring"
 else
   bad "identity or cross-component wiring invalid"
+fi
+
+if grep -q 'memory/memory.db' "$ROOT/AGENTS.md" && \
+   grep -q 'config/memory-domains.txt' "$ROOT/AGENTS.md" && \
+   grep -q 'point-of-use gate' "$ROOT/AGENTS.md"; then
+  pass "AGENTS.md contains evidence based memory protocol"
+else
+  bad "AGENTS.md does not contain evidence based memory protocol"
+fi
+
+if python3 "$ROOT/fullstack-agent/verify-memory-graph.py" --root "$ROOT"; then
+  pass "memory graph initialized with explicit synchronized domains"
+else
+  bad "memory graph or explicit domain configuration invalid"
 fi
 
 if grep -q 'identity/IDENTITY.md' "$ROOT/AGENTS.md" && \

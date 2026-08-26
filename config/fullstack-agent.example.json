@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "agent_dir": "~/my-agent",
   "identity": {
     "name": "Assistant",
@@ -7,6 +7,11 @@
     "principles_file": "identity/OPERATING_PRINCIPLES.md"
   },
   "memory_dir": "~/my-agent/memory",
+  "memory_graph": {
+    "database": "~/my-agent/memory/memory.db",
+    "domains_file": "~/my-agent/config/memory-domains.txt",
+    "contract": "fullstack-agent/architecture/MEMORY_CONTRACT.md"
+  },
   "core": {
     "provider": "codex"
   },

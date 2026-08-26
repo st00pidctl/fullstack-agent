@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 
 
 SOURCE_RANK = {
@@ -113,6 +113,41 @@ class MemoryEngine:
                 "SELECT name FROM domains WHERE active = 1 ORDER BY name COLLATE NOCASE"
             ).fetchall()
         return [row["name"] for row in rows]
+
+    def sync_domains(self, names: Iterable[str]) -> list[str]:
+        """Make an explicit operator-owned list the active domain set.
+
+        Retired domains remain in the database so historical claims keep valid
+        foreign keys, but they cannot be assigned to new or re-verified memory.
+        """
+        domains: list[str] = []
+        seen: set[str] = set()
+        for name in names:
+            clean = name.strip()
+            if not clean or clean in seen:
+                continue
+            domains.append(clean)
+            seen.add(clean)
+        if not domains:
+            raise ValueError("domain sync requires at least one explicit domain")
+
+        now = utc_now()
+        with self.connect() as conn:
+            conn.execute("UPDATE domains SET active = 0")
+            for domain in domains:
+                conn.execute(
+                    """
+                    INSERT INTO domains(name, active, created_at) VALUES (?, 1, ?)
+                    ON CONFLICT(name) DO UPDATE SET active = 1
+                    """,
+                    (domain, now),
+                )
+        return domains
+
+    def deactivate_all_domains(self) -> None:
+        """Fail closed when no explicit runtime domain configuration exists."""
+        with self.connect() as conn:
+            conn.execute("UPDATE domains SET active = 0")
 
     def configure_memory_type(self, name: str, review_after_days: int | None) -> None:
         if review_after_days is not None and review_after_days <= 0:
@@ -261,6 +296,8 @@ class MemoryEngine:
         now = utc_now()
         with self.connect() as conn:
             row = self._require_memory(conn, memory_id)
+            if row["status"] in {"superseded", "rejected"}:
+                raise ValueError(f"cannot verify {row['status']} memory")
             domain = primary_domain or row["primary_domain"]
             if not domain:
                 raise ValueError("verification requires exactly one primary domain")
@@ -298,6 +335,9 @@ class MemoryEngine:
         confidence: float = 1.0,
         source_ref: str | None = None,
     ) -> str:
+        new_claim = new_claim.strip()
+        if not new_claim:
+            raise ValueError("replacement claim cannot be empty")
         now = utc_now()
         self._validate_score("confidence", confidence)
         with self.connect() as conn:
@@ -323,7 +363,7 @@ class MemoryEngine:
                 """,
                 (
                     new_id,
-                    new_claim.strip(),
+                    new_claim,
                     domain,
                     chosen_type,
                     confidence,
@@ -374,6 +414,9 @@ class MemoryEngine:
             self._validate_score("domain_confidence", domain_confidence)
         if from_memory_id == to_memory_id:
             raise ValueError("relationship endpoints must be different")
+        relation_type = relation_type.strip()
+        if not relation_type:
+            raise ValueError("relation_type cannot be empty")
         relationship_id = str(uuid.uuid4())
         now = utc_now()
         with self.connect() as conn:
@@ -422,6 +465,7 @@ class MemoryEngine:
             ).fetchone()
             if row is None:
                 raise KeyError(f"unknown relationship: {relationship_id}")
+            self._require_domain(conn, row["primary_domain"])
             conn.execute(
                 "UPDATE relationships SET status = 'verified', updated_at = ? WHERE id = ?",
                 (now, relationship_id),
@@ -529,6 +573,11 @@ class MemoryEngine:
                     local_reasons.append(f"{memory_id}:status={row['status']}")
                 if row["primary_domain"] is None or not row["domain_verified"]:
                     local_reasons.append(f"{memory_id}:domain_unverified")
+                elif conn.execute(
+                    "SELECT 1 FROM domains WHERE name = ? AND active = 1",
+                    (row["primary_domain"],),
+                ).fetchone() is None:
+                    local_reasons.append(f"{memory_id}:domain_inactive")
                 if self._is_stale(conn, row, now):
                     local_reasons.append(f"{memory_id}:stale")
                 if local_reasons:

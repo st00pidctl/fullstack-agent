@@ -37,7 +37,7 @@ A replaceable core owns:
 ### Backtalk fork
 
 Repository: `st00pidctl/backtalk`
-Branch: `universal-core-architecture`
+Stable branch: `main`
 
 Implemented adapters:
 

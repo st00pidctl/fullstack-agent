@@ -21,9 +21,10 @@ For the complete voice experience, the guest must also see a microphone and audi
 ```bash
 mkdir -p ~/universal-agent
 cd ~/universal-agent
-git clone --branch universal-core-architecture https://github.com/st00pidctl/fullstack-agent.git
+git clone --branch main https://github.com/st00pidctl/fullstack-agent.git
 cd fullstack-agent
-./bootstrap-vm.sh --provider codex --name Assistant
+./bootstrap-vm.sh --provider codex --name Assistant \
+  --memory-domains "Personal,Work,Project Name"
 ```
 
 The bootstrap:
@@ -34,11 +35,12 @@ The bootstrap:
 4. clones the universal Backtalk fork
 5. clones upstream ai-memory-vault, ai-visualizer, and Barehands
 6. creates portable `AGENTS.md` and a Claude compatibility shim
-7. creates shell-owned `memory/`
-8. writes component configuration and state-bus paths
-9. installs Backtalk and preloads local speech models
+7. creates shell-owned `memory/` and initializes its SQLite memory graph
+8. synchronizes the explicit domains supplied with `--memory-domains`
+9. writes component configuration and state-bus paths
+10. installs Backtalk and preloads local speech models
 
-The script is safe to re-run. Existing Git repositories are updated instead of replaced, an existing canonical `AGENTS.md` is not overwritten, and the bootstrap does not update the script underneath itself while it is running.
+The script is safe to re-run. Existing Git repositories are updated instead of replaced, an existing canonical `AGENTS.md` is not overwritten, and the bootstrap does not update the script underneath itself while it is running. Replace the example domain names with an intentional domain set. If `--memory-domains` is omitted, the database is initialized but verification remains incomplete until `config/memory-domains.txt` is configured and synchronized.
 
 ## Authenticate the selected core
 

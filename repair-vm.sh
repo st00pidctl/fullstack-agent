@@ -4,12 +4,14 @@
 set -euo pipefail
 
 ROOT="$HOME/universal-agent"
+MEMORY_DOMAINS="${FULLSTACK_MEMORY_DOMAINS:-}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root) ROOT="${2:?missing path}"; shift 2 ;;
+    --memory-domains) MEMORY_DOMAINS="${2:?missing domains}"; shift 2 ;;
     -h|--help)
-      echo "Usage: ./repair-vm.sh [--root PATH]"
+      echo "Usage: ./repair-vm.sh [--root PATH] [--memory-domains CSV]"
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -78,9 +80,32 @@ Persist durable decisions, constraints, lessons, and project state to the approp
 EOF
 fi
 
+if grep -q 'memory/memory.db' "$AGENTS" && \
+   grep -q 'config/memory-domains.txt' "$AGENTS"; then
+  echo "== evidence based memory protocol already present =="
+else
+  echo "== adding evidence based memory protocol to AGENTS.md =="
+  cat >> "$AGENTS" <<'EOF'
+
+## Evidence based memory protocol
+
+The canonical structured store is `memory/memory.db`, governed by `fullstack-agent/architecture/MEMORY_CONTRACT.md`. Use `python3 fullstack-agent/memoryctl.py` to create, verify, correct, relate, gate, and audit atomic claims.
+
+A verified claim and every stored relationship must have exactly one active primary domain from `config/memory-domains.txt`. Never invent a domain or use a generic catch-all. If classification is uncertain, keep the claim as a candidate and request clarification or queue it for audit. Run the point-of-use gate before consequential work relies on durable memory.
+EOF
+fi
+
 if [ ! -d "$ROOT/memory" ]; then
   echo "Missing portable memory directory: $ROOT/memory" >&2
   exit 1
+fi
+
+echo "== provisioning evidence based memory graph =="
+if [ -n "$MEMORY_DOMAINS" ]; then
+  python3 "$ROOT/fullstack-agent/memoryctl.py" \
+    runtime-init --root "$ROOT" --domains "$MEMORY_DOMAINS"
+else
+  python3 "$ROOT/fullstack-agent/memoryctl.py" runtime-init --root "$ROOT"
 fi
 
 IDENTITY_DIR="$ROOT/identity"
@@ -147,6 +172,13 @@ identity.setdefault("name", cfg.get("name") or "Assistant")
 identity["file"] = "identity/IDENTITY.md"
 identity["principles_file"] = "identity/OPERATING_PRINCIPLES.md"
 shell["identity"] = identity
+shell["version"] = max(int(shell.get("version") or 0), 4)
+shell["memory_dir"] = str(root / "memory")
+shell["memory_graph"] = {
+    "database": str(root / "memory" / "memory.db"),
+    "domains_file": str(root / "config" / "memory-domains.txt"),
+    "contract": "fullstack-agent/architecture/MEMORY_CONTRACT.md",
+}
 shell_path.write_text(json.dumps(shell, indent=2) + "\n")
 PY
 
@@ -155,3 +187,4 @@ echo "Identity: $ROOT/identity/IDENTITY.md"
 echo "Status:   $ROOT/fullstack-agent/agentctl.py --root $ROOT status"
 echo "Verify:   $ROOT/fullstack-agent/verify-vm.sh --root $ROOT"
 echo "Memory:   $ROOT/fullstack-agent/verify-memory.sh --root $ROOT"
+echo "Graph:    python3 $ROOT/fullstack-agent/memoryctl.py --db $ROOT/memory/memory.db audit status"
