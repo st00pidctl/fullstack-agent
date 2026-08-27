@@ -1,0 +1,22 @@
+name: live-memory-check
+
+on:
+  push:
+    branches: [live-memory-integration-v1.3]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Memory engine and runtime tests
+        run: python -m unittest tests.test_memory_engine tests.test_memory_runtime
+      - name: Runtime smoke
+        run: |
+          DB="$(mktemp)"
+          python memory_runtime.py post --db "$DB" --utterance "For CTS, I prefer atomic memory claims." --response "Understood."
+          python memory_runtime.py pre --db "$DB" --utterance "What does CTS remember about atomic memory?"
